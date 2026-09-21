@@ -285,6 +285,26 @@
                 </div>
               </div>
 
+              <!-- GESTÃO DE TOKENS JEFF -->
+              <div class="bench-tokens-row">
+                <div class="bench-token-item">
+                  <span class="token-label">Prompt (Entrada)</span>
+                  <span class="token-value" id="benchJeffPromptTokens">--</span>
+                </div>
+                <div class="bench-token-item">
+                  <span class="token-label">Geração (Saída)</span>
+                  <span class="token-value highlight-token" id="benchJeffCompletionTokens">--</span>
+                </div>
+                <div class="bench-token-item">
+                  <span class="token-label">Total Tokens</span>
+                  <span class="token-value" id="benchJeffTotalTokens">--</span>
+                </div>
+                <div class="bench-token-item">
+                  <span class="token-label">Vazão (TPS)</span>
+                  <span class="token-value" id="benchJeffTps">-- t/s</span>
+                </div>
+              </div>
+
               <!-- DELIBERAÇÃO DO JEV RESUMIDA -->
               <div class="bench-jev-box" id="benchJeffDecisionBox" style="display: none;">
                 <div class="bench-jev-header">💡 Dedução do Jev: <span id="benchJeffDeduction">...</span></div>
@@ -327,6 +347,26 @@
                 <div class="bench-metric">
                   <span class="metric-label">Tempo Total</span>
                   <span class="metric-value highlight" id="benchDirectTotal">-- ms</span>
+                </div>
+              </div>
+
+              <!-- GESTÃO DE TOKENS GEMINI DIRETO -->
+              <div class="bench-tokens-row">
+                <div class="bench-token-item">
+                  <span class="token-label">Prompt (Entrada)</span>
+                  <span class="token-value" id="benchDirectPromptTokens">--</span>
+                </div>
+                <div class="bench-token-item">
+                  <span class="token-label">Geração (Saída)</span>
+                  <span class="token-value highlight-token" id="benchDirectCompletionTokens">--</span>
+                </div>
+                <div class="bench-token-item">
+                  <span class="token-label">Total Tokens</span>
+                  <span class="token-value" id="benchDirectTotalTokens">--</span>
+                </div>
+                <div class="bench-token-item">
+                  <span class="token-label">Vazão (TPS)</span>
+                  <span class="token-value" id="benchDirectTps">-- t/s</span>
                 </div>
               </div>
 

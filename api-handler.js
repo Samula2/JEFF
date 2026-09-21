@@ -563,6 +563,19 @@ ${setupGuide}`;
       res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
       await new Promise(r => setTimeout(r, 20));
     }
+    const pChars = JSON.stringify([systemPrompt, ...messages]).length;
+    const cChars = demoResponse.length;
+    const pTokens = Math.max(1, Math.round(pChars / 3.8));
+    const cTokens = Math.max(1, Math.round(cChars / 3.8));
+    res.write(`data: ${JSON.stringify({
+      usage: {
+        prompt_tokens: pTokens,
+        completion_tokens: cTokens,
+        total_tokens: pTokens + cTokens,
+        estimated: true
+      }
+    })}\n\n`);
+
     res.write(`data: [DONE]\n\n`);
     res.end();
     return;
@@ -642,7 +655,8 @@ SUA FUNÇÃO COMO TRADUTOR:
       body: JSON.stringify({
         model: targetModel,
         messages: [systemPrompt, ...messages],
-        stream: true
+        stream: true,
+        stream_options: { include_usage: true }
       })
     });
 
@@ -657,6 +671,8 @@ SUA FUNÇÃO COMO TRADUTOR:
     const reader = upstreamRes.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
+    let accumulatedText = '';
+    let finalUsage = null;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -670,14 +686,17 @@ SUA FUNÇÃO COMO TRADUTOR:
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith(':')) continue;
         if (trimmed === 'data: [DONE]') {
-          res.write(`data: [DONE]\n\n`);
           continue;
         }
         if (trimmed.startsWith('data: ')) {
           try {
             const json = JSON.parse(trimmed.slice(6));
+            if (json.usage) {
+              finalUsage = json.usage;
+            }
             const deltaText = json.choices?.[0]?.delta?.content || '';
             if (deltaText) {
+              accumulatedText += deltaText;
               res.write(`data: ${JSON.stringify({ text: deltaText })}\n\n`);
             }
           } catch {
@@ -687,6 +706,20 @@ SUA FUNÇÃO COMO TRADUTOR:
       }
     }
 
+    if (!finalUsage) {
+      const pChars = JSON.stringify([systemPrompt, ...messages]).length;
+      const cChars = accumulatedText.length;
+      const pTokens = Math.max(1, Math.round(pChars / 3.8));
+      const cTokens = Math.max(1, Math.round(cChars / 3.8));
+      finalUsage = {
+        prompt_tokens: pTokens,
+        completion_tokens: cTokens,
+        total_tokens: pTokens + cTokens,
+        estimated: true
+      };
+    }
+
+    res.write(`data: ${JSON.stringify({ usage: finalUsage })}\n\n`);
     res.write(`data: [DONE]\n\n`);
     res.end();
   } catch (err) {

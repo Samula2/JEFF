@@ -80,6 +80,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const verdictTitle = document.getElementById('verdictTitle');
   const verdictText = document.getElementById('verdictText');
 
+  // Token Metrics Elements
+  const benchJeffPromptTokens = document.getElementById('benchJeffPromptTokens');
+  const benchJeffCompletionTokens = document.getElementById('benchJeffCompletionTokens');
+  const benchJeffTotalTokens = document.getElementById('benchJeffTotalTokens');
+  const benchJeffTps = document.getElementById('benchJeffTps');
+
+  const benchDirectPromptTokens = document.getElementById('benchDirectPromptTokens');
+  const benchDirectCompletionTokens = document.getElementById('benchDirectCompletionTokens');
+  const benchDirectTotalTokens = document.getElementById('benchDirectTotalTokens');
+  const benchDirectTps = document.getElementById('benchDirectTps');
+
   let currentVerbosity = 'concise';
   const verbosityModes = ['concise', 'balanced', 'detailed'];
   const verbosityLabels = {
@@ -1014,6 +1025,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (benchDirectTtft) benchDirectTtft.textContent = '...';
     if (benchDirectTotal) benchDirectTotal.textContent = '...';
 
+    if (benchJeffPromptTokens) benchJeffPromptTokens.textContent = '...';
+    if (benchJeffCompletionTokens) benchJeffCompletionTokens.textContent = '...';
+    if (benchJeffTotalTokens) benchJeffTotalTokens.textContent = '...';
+    if (benchJeffTps) benchJeffTps.textContent = '...';
+
+    if (benchDirectPromptTokens) benchDirectPromptTokens.textContent = '...';
+    if (benchDirectCompletionTokens) benchDirectCompletionTokens.textContent = '...';
+    if (benchDirectTotalTokens) benchDirectTotalTokens.textContent = '...';
+    if (benchDirectTps) benchDirectTps.textContent = '...';
+
     if (benchJeffOutput) benchJeffOutput.innerHTML = '<span style="color: var(--text-muted); font-style: italic;">Disparando System 1 (Jev)...</span>';
     if (benchDirectOutput) benchDirectOutput.innerHTML = '<span style="color: var(--text-muted); font-style: italic;">Conectando canal direto com Google Gemini...</span>';
     if (benchJeffDecisionBox) benchJeffDecisionBox.style.display = 'none';
@@ -1030,6 +1051,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let directTtftMs = null;
     let directTotalMs = null;
     let jevLatencyMs = null;
+    let jeffUsage = null;
+    let directUsage = null;
 
     // 1. Pipeline JEFF (System 1 -> System 2)
     const runJeffPipeline = async () => {
@@ -1087,6 +1110,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (trimmed.startsWith('data: ')) {
               try {
                 const parsed = JSON.parse(trimmed.slice(6));
+                if (parsed.usage) {
+                  jeffUsage = parsed.usage;
+                }
                 if (parsed.text) {
                   if (jeffTtftMs === null) {
                     jeffTtftMs = Math.round(performance.now() - tStart);
@@ -1105,6 +1131,14 @@ document.addEventListener('DOMContentLoaded', () => {
         if (badgeJeffStatus) {
           badgeJeffStatus.className = 'bench-status-badge completed';
           badgeJeffStatus.textContent = '✓ Concluído';
+        }
+
+        if (jeffUsage) {
+          if (benchJeffPromptTokens) benchJeffPromptTokens.textContent = jeffUsage.prompt_tokens;
+          if (benchJeffCompletionTokens) benchJeffCompletionTokens.textContent = jeffUsage.completion_tokens;
+          if (benchJeffTotalTokens) benchJeffTotalTokens.textContent = jeffUsage.total_tokens;
+          const tps = jeffTotalMs > 0 ? (jeffUsage.completion_tokens / (jeffTotalMs / 1000)).toFixed(1) : 0;
+          if (benchJeffTps) benchJeffTps.textContent = `${tps} t/s`;
         }
       } catch (err) {
         if (badgeJeffStatus) {
@@ -1151,6 +1185,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (trimmed.startsWith('data: ')) {
               try {
                 const parsed = JSON.parse(trimmed.slice(6));
+                if (parsed.usage) {
+                  directUsage = parsed.usage;
+                }
                 if (parsed.text) {
                   if (directTtftMs === null) {
                     directTtftMs = Math.round(performance.now() - tStart);
@@ -1170,6 +1207,14 @@ document.addEventListener('DOMContentLoaded', () => {
           badgeDirectStatus.className = 'bench-status-badge completed';
           badgeDirectStatus.textContent = '✓ Concluído';
         }
+
+        if (directUsage) {
+          if (benchDirectPromptTokens) benchDirectPromptTokens.textContent = directUsage.prompt_tokens;
+          if (benchDirectCompletionTokens) benchDirectCompletionTokens.textContent = directUsage.completion_tokens;
+          if (benchDirectTotalTokens) benchDirectTotalTokens.textContent = directUsage.total_tokens;
+          const tps = directTotalMs > 0 ? (directUsage.completion_tokens / (directTotalMs / 1000)).toFixed(1) : 0;
+          if (benchDirectTps) benchDirectTps.textContent = `${tps} t/s`;
+        }
       } catch (err) {
         if (badgeDirectStatus) {
           badgeDirectStatus.className = 'bench-status-badge completed';
@@ -1185,12 +1230,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // Análise e Veredito Comparativo
     if (jeffTtftMs !== null && directTtftMs !== null && verdictTitle && verdictText && benchVerdictCard) {
       const deltaTtft = jeffTtftMs - directTtftMs;
-      verdictTitle.textContent = '⚖️ Veredito de Desempenho em Tempo Real';
+      verdictTitle.textContent = '⚖️ Veredito de Desempenho & Gestão de Tokens';
+
+      let speedText = '';
       if (deltaTtft > 0) {
-        verdictText.innerHTML = `O <strong>Gemini Direto</strong> começou a responder <strong>${deltaTtft}ms mais rápido</strong> no 1º token (sem etapa de System 1). O <strong>JEFF</strong> utilizou <strong>${jevLatencyMs || 25}ms</strong> deliberando com o Jev, fornecendo diagnóstico de intenção, contenção de risco e restrições estruturais antes da síntese.`;
+        speedText = `O <strong>Gemini Direto</strong> começou a responder <strong>${deltaTtft}ms mais rápido</strong> no 1º token (sem etapa de System 1). O <strong>JEFF</strong> utilizou <strong>${jevLatencyMs || 25}ms</strong> deliberando com o Jev, fornecendo diagnóstico de intenção, contenção de risco e restrições estruturais antes da síntese.`;
       } else {
-        verdictText.innerHTML = `O <strong>JEFF</strong> teve tempo de 1º token comparável ou até superior (diferença de <strong>${Math.abs(deltaTtft)}ms</strong>), combinando a deliberação analítica do Jev (${jevLatencyMs || 25}ms) com síntese concisa.`;
+        speedText = `O <strong>JEFF</strong> teve tempo de 1º token comparável ou até superior (diferença de <strong>${Math.abs(deltaTtft)}ms</strong>), combinando a deliberação analítica do Jev (${jevLatencyMs || 25}ms) com síntese concisa.`;
       }
+
+      let tokenText = '';
+      if (jeffUsage && directUsage) {
+        const outDiff = directUsage.completion_tokens - jeffUsage.completion_tokens;
+        if (outDiff > 0) {
+          const savings = ((outDiff / directUsage.completion_tokens) * 100).toFixed(0);
+          tokenText = `<br><br>📊 <strong>Gestão de Tokens:</strong> O JEFF gerou <strong>${jeffUsage.completion_tokens} tokens</strong> de resposta contra <strong>${directUsage.completion_tokens} tokens</strong> do Gemini Direto (uma <strong>economia de ${savings}%</strong> em tokens de saída graças à síntese focada). Em entrada, o JEFF consumiu ${jeffUsage.prompt_tokens} tokens (devido ao plano do Jev) vs ${directUsage.prompt_tokens} tokens no canal direto.`;
+        } else {
+          tokenText = `<br><br>📊 <strong>Gestão de Tokens:</strong> JEFF gerou ${jeffUsage.completion_tokens} tokens de saída (${jeffUsage.total_tokens} total) &bull; Gemini Direto gerou ${directUsage.completion_tokens} tokens de saída (${directUsage.total_tokens} total).`;
+        }
+      }
+
+      verdictText.innerHTML = speedText + tokenText;
       benchVerdictCard.style.display = 'flex';
     }
 
