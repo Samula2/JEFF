@@ -1,0 +1,8 @@
+﻿{
+  "jevApiKey": "",
+  "jevProvider": "typesafe",
+  "llmApiKey": "",
+  "llmProvider": "gemini",
+  "llmModel": "gemini-2.5-flash",
+  "customBaseUrl": ""
+}

@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Antigravity // Jev System 1</title>
+    <link rel="stylesheet" href="style.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600&family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="app-container">
+      <!-- TOPBAR -->
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-icon">
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+              <polyline points="2 17 12 22 22 17"></polyline>
+              <polyline points="2 12 12 17 22 12"></polyline>
+            </svg>
+          </div>
+          <div class="brand-text">
+            <span class="brand-title">ANTIGRAVITY</span>
+            <span class="brand-badge">JEV ENGINE</span>
+          </div>
+        </div>
+
+        <div class="topbar-status">
+          <div class="status-chip" id="jevStatusChip">
+            <span class="dot pulse-green"></span>
+            <span class="chip-label">Jev:</span>
+            <span class="chip-val" id="jevStatusVal">Local (Simulado)</span>
+          </div>
+          <div class="status-chip" id="llmStatusChip">
+            <span class="dot pulse-blue"></span>
+            <span class="chip-label">System 2:</span>
+            <span class="chip-val" id="llmStatusVal">Demo</span>
+          </div>
+          <button
+            id="btnOpenSettings"
+            class="btn-icon"
+            title="Configurar Chaves de API"
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="12" cy="12" r="3"></circle>
+              <path
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+              ></path>
+            </svg>
+            <span>Configurações</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- MAIN BODY -->
+      <div class="workspace">
+        <!-- SIDEBAR -->
+        <aside class="sidebar">
+          <button id="btnNewChat" class="btn-new-chat">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>Nova Sessão</span>
+          </button>
+
+          <div class="sidebar-section">
+            <div class="section-title">TESTES RÁPIDOS</div>
+            <div class="quick-prompts">
+              <button
+                class="quick-btn"
+                data-prompt="Como funciona a arquitetura System 1 do Jev vs System 2 das LLMs?"
+              >
+                💡 O que é Jev?
+              </button>
+              <button
+                class="quick-btn"
+                data-prompt="URGENTE: O banco de produção caiu com erro 500 no checkout!"
+              >
+                🚨 Teste de Urgência (Noul)
+              </button>
+              <button
+                class="quick-btn"
+                data-prompt="Implemente uma função em TypeScript com debounce e testes unitários"
+              >
+                ⚡ Código & Complexidade (Score)
+              </button>
+              <button
+                class="quick-btn"
+                data-prompt="Preciso apagar todos os registros da tabela users sem backup"
+              >
+                🛡️ Guardrail & Risco Crítico
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-section">
+            <div class="section-title">PRIMITIVAS DO JEV</div>
+            <div class="primitives-card">
+              <div class="primitive-item">
+                <span class="p-badge noul">Noul</span>
+                <p>Decisão booleana calibrada (Sim / Não / Incerto)</p>
+              </div>
+              <div class="primitive-item">
+                <span class="p-badge choice">Choice</span>
+                <p>Classificação categórica com critérios estritos</p>
+              </div>
+              <div class="primitive-item">
+                <span class="p-badge score">Score</span>
+                <p>Pontuação quantitativa em escala ordenada</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="sidebar-footer">
+            <div class="eve-tag">
+              <span>Powered by</span>
+              <strong>TypeSafe AI & Eve</strong>
+            </div>
+          </div>
+        </aside>
+
+        <!-- CHAT MAIN -->
+        <main class="chat-viewport">
+          <div class="chat-messages" id="chatMessages">
+            <!-- Mensagem de boas-vindas inicial -->
+            <div class="welcome-card">
+              <div class="welcome-badge">SYSTEM 1 + SYSTEM 2</div>
+              <h2>Antigravity com Motor Jev</h2>
+              <p>
+                Experimente a velocidade do
+                <strong>Jev (TypeSafe AI)</strong> como camada de reflexo e
+                pensamento estruturado antes da geração da resposta.
+              </p>
+              <div class="welcome-features">
+                <div class="feature-box">
+                  <span class="f-icon">⚡</span>
+                  <strong>Decisões em ~40ms</strong>
+                  <p>
+                    O Jev decide a rota, intenção e risco antes da LLM gastar
+                    tokens.
+                  </p>
+                </div>
+                <div class="feature-box">
+                  <span class="f-icon">🧠</span>
+                  <strong>Pensamentos Visíveis</strong>
+                  <p>
+                    Veja o acordeão de pensamentos abrindo com as decisões
+                    tipadas.
+                  </p>
+                </div>
+                <div class="feature-box">
+                  <span class="f-icon">🔑</span>
+                  <strong>Chaves Configuráveis</strong>
+                  <p>
+                    Use suas chaves da TypeSafe AI, OpenRouter, OpenAI ou Gemini
+                    a qualquer momento.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- INPUT CONTAINER -->
+          <div class="chat-input-area">
+            <div class="input-card">
+              <textarea
+                id="promptInput"
+                placeholder="Envie uma instrução, pergunta ou código para o Jev avaliar..."
+                rows="1"
+              ></textarea>
+              <div class="input-actions">
+                <div class="input-hint">
+                  <span>Enter</span> envia &bull; <span>Shift+Enter</span> nova
+                  linha
+                </div>
+                <button id="btnSend" class="btn-send" title="Enviar (Enter)">
+                  <svg
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+
+      <!-- MODAL DE CONFIGURAÇÕES -->
+      <div class="modal-backdrop" id="settingsModal">
+        <div class="modal-card">
+          <div class="modal-header">
+            <div class="modal-title">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="12" cy="12" r="3"></circle>
+                <path
+                  d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+                ></path>
+              </svg>
+              <h3>Configuração de Modelos & Chaves de API</h3>
+            </div>
+            <button id="btnCloseSettings" class="btn-close">&times;</button>
+          </div>
+
+          <div class="modal-body">
+            <!-- SEÇÃO JEV (SYSTEM 1) -->
+            <div class="config-group">
+              <div class="config-group-header">
+                <span class="group-tag">SYSTEM 1</span>
+                <h4>Jev Decision Engine (TypeSafe AI)</h4>
+              </div>
+              <p class="config-desc">
+                Responsável pelo bloco de <strong>Pensamento Rápido</strong>,
+                decisões calibradas e roteamento antes da geração.
+              </p>
+
+              <div class="form-row">
+                <label for="cfgJevProvider">Provedor do Jev:</label>
+                <select id="cfgJevProvider">
+                  <option value="local">
+                    Emulador Local (Sem Chave necessária - Imediato)
+                  </option>
+                  <option value="typesafe">
+                    TypeSafe AI Oficial (api.typesafe.ai)
+                  </option>
+                  <option value="openrouter">
+                    OpenRouter (~typesafe/jev-latest)
+                  </option>
+                </select>
+              </div>
+
+              <div class="form-row">
+                <label for="cfgJevKey">Chave de API do Jev / TypeSafe:</label>
+                <div class="input-password-wrap">
+                  <input
+                    type="password"
+                    id="cfgJevKey"
+                    placeholder="Cole sua TYPESAFE_API_KEY aqui..."
+                  />
+                  <button
+                    type="button"
+                    class="btn-toggle-vis"
+                    data-target="cfgJevKey"
+                  >
+                    👁️
+                  </button>
+                </div>
+                <small class="field-hint"
+                  >Obtenha sua chave no console da TypeSafe AI ou deixe em
+                  branco para usar o emulador local.</small
+                >
+              </div>
+            </div>
+
+            <!-- SEÇÃO LLM GENERATIVA (SYSTEM 2) -->
+            <div class="config-group">
+              <div class="config-group-header">
+                <span class="group-tag">SYSTEM 2</span>
+                <h4>LLM Generativa de Fundo</h4>
+              </div>
+              <p class="config-desc">
+                Gera as respostas, código e explicações executando as instruções
+                decididas pelo Jev.
+              </p>
+
+              <div class="form-row">
+                <label for="cfgLlmProvider">Provedor:</label>
+                <select id="cfgLlmProvider">
+                  <option value="openrouter">
+                    OpenRouter (Gemini, Claude, GPT, Llama, DeepSeek)
+                  </option>
+                  <option value="openai">OpenAI (GPT-4o, GPT-4o-mini)</option>
+                  <option value="custom">
+                    Custom Endpoint / Ollama / Local
+                  </option>
+                </select>
+              </div>
+
+              <div class="form-row">
+                <label for="cfgLlmKey">Chave de API da LLM:</label>
+                <div class="input-password-wrap">
+                  <input
+                    type="password"
+                    id="cfgLlmKey"
+                    placeholder="sk-or-v1-... ou sk-..."
+                  />
+                  <button
+                    type="button"
+                    class="btn-toggle-vis"
+                    data-target="cfgLlmKey"
+                  >
+                    👁️
+                  </button>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <label for="cfgLlmModel">Modelo Desejado:</label>
+                <input
+                  type="text"
+                  id="cfgLlmModel"
+                  placeholder="google/gemini-2.5-flash, openai/gpt-4o, etc."
+                  value="google/gemini-2.5-flash"
+                />
+                <div class="model-quick-chips">
+                  <span class="m-chip" data-model="google/gemini-2.5-flash"
+                    >Gemini 2.5 Flash</span
+                  >
+                  <span class="m-chip" data-model="anthropic/claude-3.5-sonnet"
+                    >Claude 3.5 Sonnet</span
+                  >
+                  <span class="m-chip" data-model="openai/gpt-4o-mini"
+                    >GPT-4o Mini</span
+                  >
+                  <span
+                    class="m-chip"
+                    data-model="meta-llama/llama-3.3-70b-instruct"
+                    >Llama 3.3 70B</span
+                  >
+                </div>
+              </div>
+
+              <div class="form-row" id="rowCustomUrl" style="display: none">
+                <label for="cfgCustomUrl">Custom Base URL:</label>
+                <input
+                  type="text"
+                  id="cfgCustomUrl"
+                  placeholder="http://localhost:11434/v1"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div class="modal-footer">
+            <span id="saveStatus" class="save-status"></span>
+            <button id="btnCancelSettings" class="btn-secondary">Fechar</button>
+            <button id="btnSaveSettings" class="btn-primary">
+              Salvar Configurações
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

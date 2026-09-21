@@ -1,0 +1,16 @@
+{
+  "name": "antigravity-jev",
+  "version": "1.0.0",
+  "description": "Interface Antigravity de alta performance para Jev (System 1) e LLMs generativas (DeepInfra, OpenRouter, OpenAI)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "server": "node server.mjs",
+    "start": "node server.mjs"
+  },
+  "devDependencies": {
+    "vite": "^6.2.0"
+  }
+}
