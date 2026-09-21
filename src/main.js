@@ -48,6 +48,38 @@ document.addEventListener('DOMContentLoaded', () => {
   const dockVerbosityIcon = document.getElementById('dockVerbosityIcon');
   const dockVerbosityLabel = document.getElementById('dockVerbosityLabel');
 
+  // View & Tab Navigation Elements
+  const tabNavChat = document.getElementById('tabNavChat');
+  const tabNavBenchmark = document.getElementById('tabNavBenchmark');
+  const sideNavChat = document.getElementById('sideNavChat');
+  const sideNavBenchmark = document.getElementById('sideNavBenchmark');
+  const viewChat = document.getElementById('viewChat');
+  const viewBenchmark = document.getElementById('viewBenchmark');
+
+  // Benchmark Controls & Metrics
+  const benchPromptInput = document.getElementById('benchPromptInput');
+  const btnRunBenchmark = document.getElementById('btnRunBenchmark');
+  const badgeJeffStatus = document.getElementById('badgeJeffStatus');
+  const benchJeffJevMs = document.getElementById('benchJeffJevMs');
+  const benchJeffTtft = document.getElementById('benchJeffTtft');
+  const benchJeffTotal = document.getElementById('benchJeffTotal');
+  const benchJeffDecisionBox = document.getElementById('benchJeffDecisionBox');
+  const benchJeffDeduction = document.getElementById('benchJeffDeduction');
+  const benchJeffIntent = document.getElementById('benchJeffIntent');
+  const benchJeffRisk = document.getElementById('benchJeffRisk');
+  const benchJeffRoute = document.getElementById('benchJeffRoute');
+  const benchJeffOutput = document.getElementById('benchJeffOutput');
+
+  const badgeDirectStatus = document.getElementById('badgeDirectStatus');
+  const benchDirectModelTag = document.getElementById('benchDirectModelTag');
+  const benchDirectTtft = document.getElementById('benchDirectTtft');
+  const benchDirectTotal = document.getElementById('benchDirectTotal');
+  const benchDirectOutput = document.getElementById('benchDirectOutput');
+
+  const benchVerdictCard = document.getElementById('benchVerdictCard');
+  const verdictTitle = document.getElementById('verdictTitle');
+  const verdictText = document.getElementById('verdictText');
+
   let currentVerbosity = 'concise';
   const verbosityModes = ['concise', 'balanced', 'detailed'];
   const verbosityLabels = {
@@ -927,6 +959,274 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   initTheme();
+
+  // View Switcher (Chat vs Benchmark)
+  function switchView(viewName) {
+    if (viewName === 'benchmark') {
+      if (viewChat) viewChat.style.display = 'none';
+      if (viewBenchmark) viewBenchmark.style.display = 'flex';
+      if (tabNavChat) tabNavChat.classList.remove('active');
+      if (tabNavBenchmark) tabNavBenchmark.classList.add('active');
+      if (sideNavChat) sideNavChat.classList.remove('active');
+      if (sideNavBenchmark) sideNavBenchmark.classList.add('active');
+      if (breadcrumbActive) breadcrumbActive.textContent = 'Comparador de Velocidade';
+      if (benchPromptInput) benchPromptInput.focus();
+    } else {
+      if (viewChat) viewChat.style.display = 'flex';
+      if (viewBenchmark) viewBenchmark.style.display = 'none';
+      if (tabNavChat) tabNavChat.classList.add('active');
+      if (tabNavBenchmark) tabNavBenchmark.classList.remove('active');
+      if (sideNavChat) sideNavChat.classList.add('active');
+      if (sideNavBenchmark) sideNavBenchmark.classList.remove('active');
+      const sess = sessions.find(s => s.id === currentSessionId);
+      if (breadcrumbActive) breadcrumbActive.textContent = sess ? sess.title : 'Nova Conversa';
+      if (promptInput) promptInput.focus();
+    }
+  }
+
+  if (tabNavChat) tabNavChat.addEventListener('click', () => switchView('chat'));
+  if (tabNavBenchmark) tabNavBenchmark.addEventListener('click', () => switchView('benchmark'));
+  if (sideNavChat) sideNavChat.addEventListener('click', () => switchView('chat'));
+  if (sideNavBenchmark) sideNavBenchmark.addEventListener('click', () => switchView('benchmark'));
+
+  // Benchmark Runner Logic
+  let isBenchmarking = false;
+
+  async function runBenchmark(promptText) {
+    if (!promptText || isBenchmarking) return;
+    isBenchmarking = true;
+    if (btnRunBenchmark) btnRunBenchmark.disabled = true;
+    if (benchPromptInput) benchPromptInput.disabled = true;
+
+    // Reset UI
+    if (badgeJeffStatus) {
+      badgeJeffStatus.className = 'bench-status-badge running';
+      badgeJeffStatus.textContent = 'Executando...';
+    }
+    if (badgeDirectStatus) {
+      badgeDirectStatus.className = 'bench-status-badge running';
+      badgeDirectStatus.textContent = 'Executando...';
+    }
+
+    if (benchJeffJevMs) benchJeffJevMs.textContent = '...';
+    if (benchJeffTtft) benchJeffTtft.textContent = '...';
+    if (benchJeffTotal) benchJeffTotal.textContent = '...';
+    if (benchDirectTtft) benchDirectTtft.textContent = '...';
+    if (benchDirectTotal) benchDirectTotal.textContent = '...';
+
+    if (benchJeffOutput) benchJeffOutput.innerHTML = '<span style="color: var(--text-muted); font-style: italic;">Disparando System 1 (Jev)...</span>';
+    if (benchDirectOutput) benchDirectOutput.innerHTML = '<span style="color: var(--text-muted); font-style: italic;">Conectando canal direto com Google Gemini...</span>';
+    if (benchJeffDecisionBox) benchJeffDecisionBox.style.display = 'none';
+    if (benchVerdictCard) benchVerdictCard.style.display = 'none';
+
+    const activeKeys = getKeysSnapshot();
+    const activeModel = cfgLlmModel.value || 'gemini-2.5-flash';
+    if (benchDirectModelTag) {
+      benchDirectModelTag.textContent = `Gemini Direto (${activeModel.split('/').pop()})`;
+    }
+
+    let jeffTtftMs = null;
+    let jeffTotalMs = null;
+    let directTtftMs = null;
+    let directTotalMs = null;
+    let jevLatencyMs = null;
+
+    // 1. Pipeline JEFF (System 1 -> System 2)
+    const runJeffPipeline = async () => {
+      const tStart = performance.now();
+      try {
+        // Step A: Jev Decision
+        const jevRes = await fetch('/api/jev/decision', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt: promptText, keys: activeKeys })
+        });
+        const jevData = await jevRes.json();
+        jevLatencyMs = Math.round(performance.now() - tStart);
+        if (benchJeffJevMs) benchJeffJevMs.textContent = `${jevLatencyMs} ms`;
+
+        // Render Jev Preview
+        const ans = jevData?.answers || {};
+        if (benchJeffDeduction) benchJeffDeduction.textContent = ans.core_deduction ? ans.core_deduction.slice(0, 140) + '...' : 'Deliberação concluída';
+        if (benchJeffIntent) benchJeffIntent.textContent = ans.intent?.value || ans.intent || 'chat';
+        if (benchJeffRisk) benchJeffRisk.textContent = ans.is_urgent_or_risky?.value === 'true' ? 'Crítico' : 'Seguro';
+        if (benchJeffRoute) benchJeffRoute.textContent = ans.action_route?.value || 'direct_response';
+        if (benchJeffDecisionBox) benchJeffDecisionBox.style.display = 'block';
+
+        if (benchJeffOutput) benchJeffOutput.innerHTML = '<span style="color: var(--text-muted); font-style: italic;">Jev concluiu. Traduzindo resposta com Gemini...</span>';
+
+        // Step B: Gemini Stream with Jev Deliberation
+        const chatRes = await fetch('/api/llm/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [{ role: 'user', content: promptText }],
+            jevDecision: jevData,
+            keys: activeKeys,
+            verbosity: currentVerbosity || 'concise'
+          })
+        });
+
+        const reader = chatRes.body.getReader();
+        const decoder = new TextDecoder();
+        let streamedMd = '';
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith(':')) continue;
+            if (trimmed === 'data: [DONE]') continue;
+            if (trimmed.startsWith('data: ')) {
+              try {
+                const parsed = JSON.parse(trimmed.slice(6));
+                if (parsed.text) {
+                  if (jeffTtftMs === null) {
+                    jeffTtftMs = Math.round(performance.now() - tStart);
+                    if (benchJeffTtft) benchJeffTtft.textContent = `${jeffTtftMs} ms`;
+                  }
+                  streamedMd += parsed.text;
+                  if (benchJeffOutput) benchJeffOutput.innerHTML = renderMarkdown(streamedMd);
+                }
+              } catch {}
+            }
+          }
+        }
+
+        jeffTotalMs = Math.round(performance.now() - tStart);
+        if (benchJeffTotal) benchJeffTotal.textContent = `${jeffTotalMs} ms`;
+        if (badgeJeffStatus) {
+          badgeJeffStatus.className = 'bench-status-badge completed';
+          badgeJeffStatus.textContent = '✓ Concluído';
+        }
+      } catch (err) {
+        if (badgeJeffStatus) {
+          badgeJeffStatus.className = 'bench-status-badge completed';
+          badgeJeffStatus.textContent = 'Erro';
+        }
+        if (benchJeffOutput) benchJeffOutput.innerHTML = `<span style="color: red;">Erro no fluxo JEFF: ${err.message}</span>`;
+      }
+    };
+
+    // 2. Pipeline Gemini Direto (Raw)
+    const runDirectPipeline = async () => {
+      const tStart = performance.now();
+      try {
+        const directRes = await fetch('/api/llm/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [{ role: 'user', content: promptText }],
+            keys: activeKeys,
+            isDirect: true,
+            provider: 'gemini',
+            model: activeModel
+          })
+        });
+
+        const reader = directRes.body.getReader();
+        const decoder = new TextDecoder();
+        let streamedMd = '';
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith(':')) continue;
+            if (trimmed === 'data: [DONE]') continue;
+            if (trimmed.startsWith('data: ')) {
+              try {
+                const parsed = JSON.parse(trimmed.slice(6));
+                if (parsed.text) {
+                  if (directTtftMs === null) {
+                    directTtftMs = Math.round(performance.now() - tStart);
+                    if (benchDirectTtft) benchDirectTtft.textContent = `${directTtftMs} ms`;
+                  }
+                  streamedMd += parsed.text;
+                  if (benchDirectOutput) benchDirectOutput.innerHTML = renderMarkdown(streamedMd);
+                }
+              } catch {}
+            }
+          }
+        }
+
+        directTotalMs = Math.round(performance.now() - tStart);
+        if (benchDirectTotal) benchDirectTotal.textContent = `${directTotalMs} ms`;
+        if (badgeDirectStatus) {
+          badgeDirectStatus.className = 'bench-status-badge completed';
+          badgeDirectStatus.textContent = '✓ Concluído';
+        }
+      } catch (err) {
+        if (badgeDirectStatus) {
+          badgeDirectStatus.className = 'bench-status-badge completed';
+          badgeDirectStatus.textContent = 'Erro';
+        }
+        if (benchDirectOutput) benchDirectOutput.innerHTML = `<span style="color: red;">Erro no canal direto: ${err.message}</span>`;
+      }
+    };
+
+    // Executa ambos em paralelo
+    await Promise.allSettled([runJeffPipeline(), runDirectPipeline()]);
+
+    // Análise e Veredito Comparativo
+    if (jeffTtftMs !== null && directTtftMs !== null && verdictTitle && verdictText && benchVerdictCard) {
+      const deltaTtft = jeffTtftMs - directTtftMs;
+      verdictTitle.textContent = '⚖️ Veredito de Desempenho em Tempo Real';
+      if (deltaTtft > 0) {
+        verdictText.innerHTML = `O <strong>Gemini Direto</strong> começou a responder <strong>${deltaTtft}ms mais rápido</strong> no 1º token (sem etapa de System 1). O <strong>JEFF</strong> utilizou <strong>${jevLatencyMs || 25}ms</strong> deliberando com o Jev, fornecendo diagnóstico de intenção, contenção de risco e restrições estruturais antes da síntese.`;
+      } else {
+        verdictText.innerHTML = `O <strong>JEFF</strong> teve tempo de 1º token comparável ou até superior (diferença de <strong>${Math.abs(deltaTtft)}ms</strong>), combinando a deliberação analítica do Jev (${jevLatencyMs || 25}ms) com síntese concisa.`;
+      }
+      benchVerdictCard.style.display = 'flex';
+    }
+
+    isBenchmarking = false;
+    if (btnRunBenchmark) btnRunBenchmark.disabled = false;
+    if (benchPromptInput) {
+      benchPromptInput.disabled = false;
+      benchPromptInput.focus();
+    }
+  }
+
+  // Listeners dos presets do benchmark
+  document.querySelectorAll('.bench-preset-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const p = chip.getAttribute('data-bench-prompt');
+      if (benchPromptInput) benchPromptInput.value = p;
+      runBenchmark(p);
+    });
+  });
+
+  if (btnRunBenchmark) {
+    btnRunBenchmark.addEventListener('click', () => {
+      const p = benchPromptInput.value.trim();
+      if (p) runBenchmark(p);
+    });
+  }
+
+  if (benchPromptInput) {
+    benchPromptInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const p = benchPromptInput.value.trim();
+        if (p) runBenchmark(p);
+      }
+    });
+  }
   initSessions();
   loadConfig();
 });

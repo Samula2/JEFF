@@ -487,10 +487,12 @@ export async function executeJevDecision(prompt, keys = {}) {
 }
 
 export async function streamLLMResponse(reqBody, res) {
-  const { messages, jevDecision, keys = {}, verbosity: reqVerbosity } = reqBody;
+  const { messages, jevDecision, keys = {}, verbosity: reqVerbosity, isDirect, direct, provider: forcedProvider, model: forcedModel } = reqBody;
+  const isDirectMode = Boolean(isDirect || direct);
+
+  const llmProvider = forcedProvider || keys.llmProvider || currentConfig.llmProvider || 'gemini';
   const llmKey = keys.llmApiKey || currentConfig.llmApiKey;
-  const llmProvider = keys.llmProvider || currentConfig.llmProvider;
-  const llmModel = keys.llmModel || currentConfig.llmModel || 'meta-llama/Meta-Llama-3.1-70B-Instruct';
+  const llmModel = forcedModel || keys.llmModel || currentConfig.llmModel || (llmProvider === 'gemini' ? 'gemini-2.5-flash' : 'meta-llama/Meta-Llama-3.1-70B-Instruct');
   const customBaseUrl = keys.customBaseUrl || currentConfig.customBaseUrl;
   const verbosity = keys.verbosity || reqVerbosity || currentConfig.verbosity || 'concise';
 
@@ -527,7 +529,17 @@ export async function streamLLMResponse(reqBody, res) {
 2. Selecione o provedor **${providerName}**.
 3. Cole sua chave de API e selecione o modelo desejado (ex: \`${llmModel}\`).`;
 
-    const demoResponse = `### [Tradução Humana da Deliberação do Jev]
+    const demoResponse = isDirectMode
+      ? `### [Resposta Direta do ${providerName}]
+*(Modo de Demonstração Direto — sem intermediação ou deliberação do Jev).*
+
+Resposta simulada do modelo **${llmModel}** para:
+> "${lastUserMsg}"
+
+Esta resposta foi gerada em canal direto sem pré-processamento de intenções, deduções analíticas ou guardrails de System 1.
+
+${setupGuide}`
+      : `### [Tradução Humana da Deliberação do Jev]
 *(Modo de Demonstração — configure sua chave do **${providerName}** no botão **⚙️ Configurações** para geração em tempo real pelo modelo ${llmModel}).*
 
 ---
@@ -538,29 +550,18 @@ export async function streamLLMResponse(reqBody, res) {
 ${premises.map(p => `- ${p}`).join('\n') || '- Entradas do usuário validadas'}
 
 **Restrições e Guardrails do Jev:**
-${constraints.map(c => `- ${c}`).join('\n') || '- Segurança e idempotência mantidas'}
+${constraints.map(c => `- ${c}`).join('\n') || '- Segurança e transparência mantidas'}
 
 ---
 #### **2. Tradução da Solução Planejada pelo Jev:**
 ${steps.map((st, i) => `**Passo ${i + 1}:** ${st}`).join('\n\n')}
 
----
-${intent === 'code_engineering' ? `
-\`\`\`${codeSpec.domain === 'TypeScript' ? 'typescript' : (codeSpec.domain === 'Python' ? 'python' : (codeSpec.domain === 'Rust' ? 'rust' : 'javascript'))}
-// Solução sintetizada a partir do plano do Jev
-export function executeSolution() {
-  console.log("Solução conforme plano de execução do Jev");
-  // Implementação guiada pelo plano de 4 passos
-}
-\`\`\`
-` : ''}
-${setupGuide}
-`;
+${setupGuide}`;
 
     const chunks = demoResponse.split(/(?<=\n|\. )/);
     for (const chunk of chunks) {
       res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
-      await new Promise(r => setTimeout(r, 25));
+      await new Promise(r => setTimeout(r, 20));
     }
     res.write(`data: [DONE]\n\n`);
     res.end();
@@ -606,7 +607,10 @@ ${setupGuide}
 - Resposta limpa, profissional e equilibrada sem introduções vazias. Gere código apenas quando o assunto for desenvolvimento.`;
   }
 
-  const systemPrompt = {
+  const systemPrompt = isDirectMode ? {
+    role: 'system',
+    content: 'Você é o Google Gemini, um assistente de inteligência artificial de alta velocidade e precisão. Responda à dúvida do usuário com objetividade, clareza e sem enrolação em português.'
+  } : {
     role: 'system',
     content: `Você é a inteligência tradutora e sintetizadora (System 2 Translator) do motor de raciocínio Jev (System 1 Reasoner).
 TODO O PENSAMENTO, DIAGNÓSTICO E PLANO DE EXECUÇÃO JÁ FORAM PROCESSADOS PELO JEV.

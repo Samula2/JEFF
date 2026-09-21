@@ -50,6 +50,19 @@
         </button>
       </div>
 
+      <!-- SIDEBAR VIEWS NAVIGATION -->
+      <div class="sidebar-views-nav">
+        <button class="sidebar-view-btn active" id="sideNavChat" title="Chat Principal com JEFF">
+          <span class="view-btn-icon">💬</span>
+          <span class="view-btn-text">Chat Principal</span>
+        </button>
+        <button class="sidebar-view-btn" id="sideNavBenchmark" title="Comparar velocidade entre JEFF e Gemini Direto">
+          <span class="view-btn-icon">⚡</span>
+          <span class="view-btn-text">Comparar Velocidade</span>
+          <span class="view-btn-badge">vs Gemini</span>
+        </button>
+      </div>
+
       <!-- CHAT SESSIONS HISTORY -->
       <div class="sidebar-history-wrap">
         <div class="history-header">
@@ -82,6 +95,16 @@
             <span class="crumb-sep">&rsaquo;</span>
             <span class="crumb-active bc-active">Nova Conversa</span>
           </div>
+        <div class="topbar-center-nav">
+          <button class="topbar-tab-btn active" id="tabNavChat" title="Chat com JEFF (System 1 + System 2)">
+            <span class="tab-icon">💬</span>
+            <span class="tab-label">Chat JEFF</span>
+          </button>
+          <button class="topbar-tab-btn" id="tabNavBenchmark" title="Comparar velocidade entre JEFF e Gemini Direto">
+            <span class="tab-icon">⚡</span>
+            <span class="tab-label">Comparar Velocidade</span>
+            <span class="tab-badge-new">Novo</span>
+          </button>
         </div>
 
         <div class="topbar-right">
@@ -108,90 +131,222 @@
         </div>
       </header>
 
-      <!-- MESSAGES VIEWPORT -->
-      <div class="chat-viewport-scroll" id="messagesStream">
-        <!-- WELCOME CARD (FRUTIGER AERO WEBSITE HERO) -->
-        <div class="welcome-card" id="welcomeView">
-          <div class="welcome-hero-mark">
-            <div class="hero-mega-orb">
-              <span class="orb-specular-glare"></span>
-              <span class="hero-orb-letter">J</span>
+      <!-- VIEW 1: CHAT PRINCIPAL -->
+      <div class="main-view-panel active" id="viewChat">
+        <!-- MESSAGES VIEWPORT -->
+        <div class="chat-viewport-scroll" id="messagesStream">
+          <!-- WELCOME CARD (FRUTIGER AERO WEBSITE HERO) -->
+          <div class="welcome-card" id="welcomeView">
+            <div class="welcome-hero-mark">
+              <div class="hero-mega-orb">
+                <span class="orb-specular-glare"></span>
+                <span class="hero-orb-letter">J</span>
+              </div>
+            </div>
+
+            <h1 class="welcome-headline">JEFF</h1>
+            <p class="welcome-subtext">
+              Assistente técnico em computação otimista com motor de reflexo instantâneo e modelos generativos de alta precisão.
+            </p>
+
+            <div class="suggestions-grid">
+              <button class="suggestion-card scenario-trigger" data-prompt="Como o JEFF decide rotas e intenções antes de acionar a LLM?">
+                <span class="card-glass-glare"></span>
+                <div class="sugg-header">
+                  <span class="sugg-badge-orb aqua">&#128167;</span>
+                  <span class="sugg-category">Arquitetura</span>
+                </div>
+                <div class="sugg-title">Como o JEFF decide rotas?</div>
+                <div class="sugg-desc">Separação entre reflexo rápido de decisão em sub-30ms e o modelo generativo</div>
+              </button>
+
+              <button class="suggestion-card scenario-trigger" data-prompt="Como diagnosticar um erro 500 intermitente na API de checkout em produção?">
+                <span class="card-glass-glare"></span>
+                <div class="sugg-header">
+                  <span class="sugg-badge-orb green">&#127807;</span>
+                  <span class="sugg-category">Operações</span>
+                </div>
+                <div class="sugg-title">Diagnóstico em produção</div>
+                <div class="sugg-desc">Contenção de incidentes, idempotência e mitigação de risco de falhas</div>
+              </button>
+
+              <button class="suggestion-card scenario-trigger" data-prompt="Implemente uma estrutura de fila concorrente com controle de backpressure em TypeScript">
+                <span class="card-glass-glare"></span>
+                <div class="sugg-header">
+                  <span class="sugg-badge-orb gold">&#9889;</span>
+                  <span class="sugg-category">Engenharia</span>
+                </div>
+                <div class="sugg-title">Desenvolvimento de código</div>
+                <div class="sugg-desc">Fila concorrente com controle de vazão, backpressure e tipagem estrita</div>
+              </button>
             </div>
           </div>
+        </div>
 
-          <h1 class="welcome-headline">JEFF</h1>
-          <p class="welcome-subtext">
-            Assistente técnico em computação otimista com motor de reflexo instantâneo e modelos generativos de alta precisão.
-          </p>
+        <!-- BOTÃO FLUTUANTE PARA ROLAR AO FIM -->
+        <button id="btnScrollBottom" class="btn-scroll-bottom hidden" title="Rolar para o fim">
+          <span class="scroll-arrow">&#8595;</span>
+          <span>Rolar para o fim</span>
+        </button>
 
-          <div class="suggestions-grid">
-            <button class="suggestion-card scenario-trigger" data-prompt="Como o JEFF decide rotas e intenções antes de acionar a LLM?">
-              <span class="card-glass-glare"></span>
-              <div class="sugg-header">
-                <span class="sugg-badge-orb aqua">&#128167;</span>
-                <span class="sugg-category">Arquitetura</span>
+        <!-- FLOATING INPUT CAPSULE DOCK -->
+        <div class="app-input-dock">
+          <div class="input-card-container">
+            <textarea
+              id="promptInput"
+              placeholder="Envie uma mensagem ou peça uma solução em código..."
+              rows="1"
+            ></textarea>
+
+            <div class="dock-actions-row">
+              <div class="dock-left-tools">
+                <div class="model-select-pill" id="btnDockModel" title="Configurar Modelos e Chaves">
+                  <span class="dot-model-green"></span>
+                  <span id="dockModelLabel">DeepInfra &bull; Llama 3.1 70B</span>
+                  <span class="chevron-down">&#9662;</span>
+                </div>
+
+                <div class="verbosity-select-pill" id="btnDockVerbosity" title="Clique para alternar tamanho da resposta: Conciso, Equilibrado ou Detalhado">
+                  <span class="verbosity-icon" id="dockVerbosityIcon">&#9889;</span>
+                  <span id="dockVerbosityLabel">Conciso</span>
+                </div>
               </div>
-              <div class="sugg-title">Como o JEFF decide rotas?</div>
-              <div class="sugg-desc">Separação entre reflexo rápido de decisão em sub-30ms e o modelo generativo</div>
-            </button>
 
-            <button class="suggestion-card scenario-trigger" data-prompt="Como diagnosticar um erro 500 intermitente na API de checkout em produção?">
-              <span class="card-glass-glare"></span>
-              <div class="sugg-header">
-                <span class="sugg-badge-orb green">&#127807;</span>
-                <span class="sugg-category">Operações</span>
+              <div class="dock-right-tools">
+                <button id="btnSend" class="btn-dock-send" title="Enviar (Enter)">
+                  <span class="send-btn-glare"></span>
+                  <span class="send-arrow-icon">&#9658;</span>
+                </button>
               </div>
-              <div class="sugg-title">Diagnóstico em produção</div>
-              <div class="sugg-desc">Contenção de incidentes, idempotência e mitigação de risco de falhas</div>
-            </button>
-
-            <button class="suggestion-card scenario-trigger" data-prompt="Implemente uma estrutura de fila concorrente com controle de backpressure em TypeScript">
-              <span class="card-glass-glare"></span>
-              <div class="sugg-header">
-                <span class="sugg-badge-orb gold">&#9889;</span>
-                <span class="sugg-category">Engenharia</span>
-              </div>
-              <div class="sugg-title">Desenvolvimento de código</div>
-              <div class="sugg-desc">Fila concorrente com controle de vazão, backpressure e tipagem estrita</div>
-            </button>
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- BOTÃO FLUTUANTE PARA ROLAR AO FIM -->
-      <button id="btnScrollBottom" class="btn-scroll-bottom hidden" title="Rolar para o fim">
-        <span class="scroll-arrow">&#8595;</span>
-        <span>Rolar para o fim</span>
-      </button>
+      <!-- VIEW 2: COMPARADOR DE VELOCIDADE (BENCHMARK) -->
+      <div class="main-view-panel" id="viewBenchmark" style="display: none;">
+        <div class="benchmark-scroll-area">
+          <div class="benchmark-hero-banner">
+            <div class="bench-badge-row">
+              <span class="badge-tag">⚡ Performance Lab</span>
+              <span class="bench-pulse-tag"><span class="bench-pulse-dot"></span> Teste Concorrente Lado a Lado</span>
+            </div>
+            <h2 class="bench-title">Comparador de Velocidade: JEFF vs Gemini Direto</h2>
+            <p class="bench-subtitle">
+              Dispare uma pergunta simultaneamente para os dois fluxos e compare em tempo real a latência até o 1º token (TTFT), tempo total e o impacto do raciocínio analítico do Jev.
+            </p>
 
-      <!-- FLOATING INPUT CAPSULE DOCK -->
-      <div class="app-input-dock">
-        <div class="input-card-container">
-          <textarea
-            id="promptInput"
-            placeholder="Envie uma mensagem ou peça uma solução em código..."
-            rows="1"
-          ></textarea>
+            <div class="bench-quick-prompts">
+              <span class="bench-quick-label">Cenários Prontos:</span>
+              <button class="bench-preset-chip" data-bench-prompt="Implemente uma função de Fibonacci recursiva com memoization em TypeScript, tipagem estrita e validação de entrada">⚡ Fibonacci em TS</button>
+              <button class="bench-preset-chip" data-bench-prompt="Explique como funciona o padrão Transactional Outbox com CDC para garantir consistência eventual em microsserviços">📦 Outbox Pattern</button>
+              <button class="bench-preset-chip" data-bench-prompt="Como prevenir race conditions e overselling em um checkout de flash sale com alto volume?">🛡️ Flash Sale &amp; Locks</button>
+              <button class="bench-preset-chip" data-bench-prompt="Quais são as opções reais e viáveis para viajar para o Canadá de graça ou com custos mínimos?">🇨🇦 Viajar pro Canadá</button>
+            </div>
 
-          <div class="dock-actions-row">
-            <div class="dock-left-tools">
-              <div class="model-select-pill" id="btnDockModel" title="Configurar Modelos e Chaves">
-                <span class="dot-model-green"></span>
-                <span id="dockModelLabel">DeepInfra &bull; Llama 3.1 70B</span>
-                <span class="chevron-down">&#9662;</span>
+            <div class="bench-input-box">
+              <input type="text" id="benchPromptInput" class="bench-input" placeholder="Digite uma pergunta para comparar a velocidade em paralelo..." />
+              <button id="btnRunBenchmark" class="btn-bench-run">
+                <span class="run-icon">🚀</span>
+                <span>Comparar Velocidade</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- COMPARISON ARENA (SIDE BY SIDE) -->
+          <div class="bench-arena">
+            <!-- COLUNA ESQUERDA: JEFF SANDWICH -->
+            <div class="bench-card" id="cardBenchJeff">
+              <div class="bench-card-header">
+                <div class="bench-card-title-group">
+                  <div class="bench-avatar jeff-orb">J</div>
+                  <div>
+                    <h3 class="bench-card-name">JEFF (System 1 + System 2)</h3>
+                    <span class="bench-card-tag">Raciocínio Deliberado Jev + Tradução Gemini</span>
+                  </div>
+                </div>
+                <div class="bench-status-badge waiting" id="badgeJeffStatus">Aguardando disparo</div>
               </div>
 
-              <div class="verbosity-select-pill" id="btnDockVerbosity" title="Clique para alternar tamanho da resposta: Conciso, Equilibrado ou Detalhado">
-                <span class="verbosity-icon" id="dockVerbosityIcon">&#9889;</span>
-                <span id="dockVerbosityLabel">Conciso</span>
+              <!-- TELEMETRIA AO VIVO JEFF -->
+              <div class="bench-metrics-row">
+                <div class="bench-metric">
+                  <span class="metric-label">Deliberação Jev (S1)</span>
+                  <span class="metric-value" id="benchJeffJevMs">-- ms</span>
+                </div>
+                <div class="bench-metric">
+                  <span class="metric-label">1º Token (TTFT)</span>
+                  <span class="metric-value" id="benchJeffTtft">-- ms</span>
+                </div>
+                <div class="bench-metric">
+                  <span class="metric-label">Tempo Total</span>
+                  <span class="metric-value highlight" id="benchJeffTotal">-- ms</span>
+                </div>
+              </div>
+
+              <!-- DELIBERAÇÃO DO JEV RESUMIDA -->
+              <div class="bench-jev-box" id="benchJeffDecisionBox" style="display: none;">
+                <div class="bench-jev-header">💡 Dedução do Jev: <span id="benchJeffDeduction">...</span></div>
+                <div class="bench-jev-meta">
+                  <span>Intenção: <strong id="benchJeffIntent">--</strong></span> &bull;
+                  <span>Risco: <strong id="benchJeffRisk">--</strong></span> &bull;
+                  <span>Rota: <strong id="benchJeffRoute">--</strong></span>
+                </div>
+              </div>
+
+              <!-- SAÍDA DE TEXTO JEFF -->
+              <div class="bench-output" id="benchJeffOutput">
+                <div class="bench-empty-placeholder">Clique em "Comparar Velocidade" ou escolha um cenário acima.</div>
               </div>
             </div>
 
-            <div class="dock-right-tools">
-              <button id="btnSend" class="btn-dock-send" title="Enviar (Enter)">
-                <span class="send-btn-glare"></span>
-                <span class="send-arrow-icon">&#9658;</span>
-              </button>
+            <!-- COLUNA DIREITA: GEMINI DIRETO -->
+            <div class="bench-card" id="cardBenchDirect">
+              <div class="bench-card-header">
+                <div class="bench-card-title-group">
+                  <div class="bench-avatar gemini-orb">G</div>
+                  <div>
+                    <h3 class="bench-card-name">Google Gemini Direto (Raw)</h3>
+                    <span class="bench-card-tag" id="benchDirectModelTag">Chamada Direta à API (Sem Jev)</span>
+                  </div>
+                </div>
+                <div class="bench-status-badge waiting" id="badgeDirectStatus">Aguardando disparo</div>
+              </div>
+
+              <!-- TELEMETRIA AO VIVO GEMINI DIRETO -->
+              <div class="bench-metrics-row">
+                <div class="bench-metric">
+                  <span class="metric-label">Deliberação S1</span>
+                  <span class="metric-value">0 ms (Nenhum)</span>
+                </div>
+                <div class="bench-metric">
+                  <span class="metric-label">1º Token (TTFT)</span>
+                  <span class="metric-value" id="benchDirectTtft">-- ms</span>
+                </div>
+                <div class="bench-metric">
+                  <span class="metric-label">Tempo Total</span>
+                  <span class="metric-value highlight" id="benchDirectTotal">-- ms</span>
+                </div>
+              </div>
+
+              <!-- ESPAÇADOR DE ALINHAMENTO -->
+              <div class="bench-direct-banner">
+                ⚡ Resposta direta da LLM sem pré-processamento de intenções ou guardrails.
+              </div>
+
+              <!-- SAÍDA DE TEXTO GEMINI DIRETO -->
+              <div class="bench-output" id="benchDirectOutput">
+                <div class="bench-empty-placeholder">Aguardando disparo do benchmark concorrente...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- QUADRO DE VEREDITO / DELTA -->
+          <div class="bench-verdict-card" id="benchVerdictCard" style="display: none;">
+            <div class="verdict-icon">⚖️</div>
+            <div class="verdict-content">
+              <h4 class="verdict-title" id="verdictTitle">Análise Comparativa de Desempenho</h4>
+              <p class="verdict-text" id="verdictText">...</p>
             </div>
           </div>
         </div>
@@ -245,9 +400,14 @@
 
             <div class="model-quick-row" id="geminiModels">
               <span class="chip-model active" data-model="gemini-2.5-flash">Gemini 2.5 Flash</span>
-              <span class="chip-model" data-model="gemini-2.0-flash">Gemini 2.0 Flash</span>
-              <span class="chip-model" data-model="gemini-1.5-pro">Gemini 1.5 Pro</span>
               <span class="chip-model" data-model="gemini-2.5-pro">Gemini 2.5 Pro</span>
+              <span class="chip-model" data-model="gemini-2.0-flash">Gemini 2.0 Flash</span>
+              <span class="chip-model" data-model="gemini-2.0-flash-lite">Gemini 2.0 Flash Lite</span>
+              <span class="chip-model" data-model="gemini-2.0-flash-thinking-exp">Gemini 2.0 Thinking</span>
+              <span class="chip-model" data-model="gemini-2.0-pro-exp-02-05">Gemini 2.0 Pro Exp</span>
+              <span class="chip-model" data-model="gemini-1.5-flash">Gemini 1.5 Flash</span>
+              <span class="chip-model" data-model="gemini-1.5-flash-8b">Gemini 1.5 Flash 8B</span>
+              <span class="chip-model" data-model="gemini-1.5-pro">Gemini 1.5 Pro</span>
             </div>
 
             <div class="model-quick-row" id="deepinfraModels" style="display: none;">
@@ -260,8 +420,11 @@
 
             <div class="model-quick-row" id="openrouterModels" style="display: none;">
               <span class="chip-model" data-model="google/gemini-2.5-flash">Gemini 2.5 Flash</span>
+              <span class="chip-model" data-model="google/gemini-2.0-flash-001">Gemini 2.0 Flash</span>
+              <span class="chip-model" data-model="google/gemini-2.0-flash-thinking-exp:free">Gemini 2.0 Thinking (Free)</span>
               <span class="chip-model" data-model="anthropic/claude-3.5-sonnet">Claude 3.5 Sonnet</span>
               <span class="chip-model" data-model="openai/gpt-4o-mini">GPT-4o Mini</span>
+              <span class="chip-model" data-model="deepseek/deepseek-r1">DeepSeek R1</span>
             </div>
           </div>
 
