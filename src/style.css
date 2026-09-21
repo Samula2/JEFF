@@ -2333,6 +2333,7 @@ body.dark-aero .msg-bubble-user code {
 .benchmark-scroll-area {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 24px 32px 60px 32px;
   display: flex;
   flex-direction: column;
@@ -2340,6 +2341,7 @@ body.dark-aero .msg-bubble-user code {
   max-width: 1300px;
   margin: 0 auto;
   width: 100%;
+  min-width: 0;
 }
 
 /* Benchmark Hero Banner */
@@ -2492,23 +2494,28 @@ body.dark-aero .msg-bubble-user code {
 /* Benchmark Comparison Arena */
 .bench-arena {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
   align-items: stretch;
+  width: 100%;
+  min-width: 0;
 }
 
 .bench-card {
   background: rgba(255, 255, 255, 0.88);
   border: 1px solid rgba(125, 211, 252, 0.55);
   border-radius: 16px;
-  padding: 20px;
+  padding: 18px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
   box-shadow: 0 6px 24px rgba(0, 80, 160, 0.08), inset 0 1px 0 #ffffff;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   min-height: 480px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .bench-card-header {
@@ -2849,10 +2856,108 @@ body.dark-aero .token-value.highlight-token {
   border-radius: 12px;
   padding: 16px;
   font-size: 13.5px;
-  line-height: 1.6;
+  line-height: 1.65;
   color: #1e293b;
   overflow-y: auto;
-  max-height: 440px;
+  overflow-x: hidden;
+  max-height: 480px;
+  min-width: 0;
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.bench-output h1 { font-size: 16px; color: #023e8a; margin: 14px 0 6px 0; font-weight: 800; line-height: 1.35; overflow-wrap: break-word; }
+.bench-output h2 { font-size: 14.5px; color: #023e8a; margin: 12px 0 6px 0; font-weight: 700; line-height: 1.35; overflow-wrap: break-word; }
+.bench-output h3 { font-size: 13.5px; color: #034078; margin: 10px 0 4px 0; font-weight: 700; line-height: 1.35; overflow-wrap: break-word; }
+.bench-output h4, .bench-output h5 { font-size: 12.5px; color: #034078; margin: 8px 0 4px 0; font-weight: 700; overflow-wrap: break-word; }
+
+.bench-output p {
+  margin: 6px 0;
+}
+
+.bench-output pre {
+  background: #06182c;
+  border: 1px solid #14385e;
+  border-radius: 8px;
+  padding: 12px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: #7dd3fc;
+  margin: 10px 0;
+  max-width: 100%;
+}
+
+.bench-output code {
+  font-family: var(--font-mono);
+  background: #e0f2fe;
+  border: 1px solid #bae6fd;
+  padding: 2px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #0369a1;
+}
+
+.bench-output pre code {
+  background: transparent;
+  border: none;
+  color: inherit;
+  padding: 0;
+}
+
+.bench-output ul, .bench-output ol,
+.bot-response-text ul, .bot-response-text ol {
+  margin: 8px 0 8px 20px;
+  padding: 0;
+}
+
+.bench-output li, .bot-response-text li {
+  margin: 4px 0;
+  line-height: 1.5;
+}
+
+.bench-output hr, .bot-response-text hr {
+  border: none;
+  border-top: 1px solid #cbd5e1;
+  margin: 16px 0;
+}
+
+.bench-output table, .bot-response-text table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 12.5px;
+  max-width: 100%;
+  overflow-x: auto;
+  display: block;
+}
+
+.bench-output th, .bench-output td,
+.bot-response-text th, .bot-response-text td {
+  border: 1px solid #cbd5e1;
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.bench-output th, .bot-response-text th {
+  background: #f1f5f9;
+  font-weight: 700;
+}
+
+/* KaTeX Math Container & Breakout Prevention */
+.katex-display {
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  padding: 8px 0 !important;
+  margin: 12px 0 !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.katex {
+  font-size: 1.05em;
+  text-rendering: auto;
+  max-width: 100%;
 }
 
 .bench-empty-placeholder {
@@ -3087,7 +3192,51 @@ body.dark-aero .bench-layer-bar {
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
+body.dark-aero .katex {
+  color: #f1f5f9;
+}
+
+body.dark-aero .bench-output hr,
+body.dark-aero .bot-response-text hr {
+  border-top-color: rgba(56, 189, 248, 0.2);
+}
+
+body.dark-aero .bench-output th,
+body.dark-aero .bot-response-text th {
+  background: rgba(14, 45, 75, 0.8);
+  color: #7dd3fc;
+  border-color: rgba(56, 189, 248, 0.2);
+}
+
+body.dark-aero .bench-output td,
+body.dark-aero .bot-response-text td {
+  border-color: rgba(56, 189, 248, 0.15);
+  color: #e2e8f0;
+}
+
+body.dark-aero .bench-output code,
+body.dark-aero .bot-response-text code {
+  background: rgba(14, 45, 75, 0.8);
+  border-color: rgba(56, 189, 248, 0.3);
+  color: #38bdf8;
+}
+
+body.dark-aero .bench-output h1,
+body.dark-aero .bench-output h2,
+body.dark-aero .bench-output h3,
+body.dark-aero .bot-response-text h1,
+body.dark-aero .bot-response-text h2,
+body.dark-aero .bot-response-text h3 {
+  color: #7dd3fc;
+}
+
 @media (max-width: 1150px) {
+  .bench-arena {
+    grid-template-columns: 1fr;
+  }
+  .benchmark-scroll-area {
+    padding: 16px 16px 40px 16px;
+  }
   .app-topbar {
     padding: 0 12px;
     gap: 8px;
@@ -3100,12 +3249,6 @@ body.dark-aero .bench-layer-bar {
   .breadcrumb-glass-pill .crumb-sep {
     display: none;
   }
-}
-
-@media (max-width: 900px) {
-  .bench-arena {
-    grid-template-columns: 1fr;
-  }
   .topbar-center-nav .tab-label {
     display: none;
   }
@@ -3114,6 +3257,12 @@ body.dark-aero .bench-layer-bar {
   }
   .btn-topbar-settings span:not(.settings-gear-icon) {
     display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .bench-tokens-row {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 

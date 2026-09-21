@@ -1,4 +1,13 @@
 // src/main.js - Antigravity JEFF Experience com Histórico Real
+import { marked } from 'marked';
+import katex from 'katex';
+import 'katex/dist/katex.min.css';
+
+marked.setOptions({
+  gfm: true,
+  breaks: true
+});
+
 document.addEventListener('DOMContentLoaded', () => {
   // DOM Elements
   const messagesStream = document.getElementById('messagesStream');
@@ -930,24 +939,70 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderMarkdown(md) {
     if (!md) return '';
-    let html = escapeHtml(md);
 
-    html = html.replace(/```([a-zA-Z0-9_-]*)\n([\s\S]*?)```/g, (match, lang, code) => {
-      return `<pre><code>${code}</code></pre>`;
+    // 1. Normaliza marcadores com bullet unicode (•) para markdown (-)
+    let text = md.replace(/^(\s*)•\s+/gm, '$1- ');
+
+    // 2. Protege blocos de código (``` e `) para não interferir na extração de fórmulas
+    const codeTokens = [];
+    text = text.replace(/(```[\s\S]*?```|`[^`\n]+`)/g, (match) => {
+      const token = `%%CODE_BLOCK_${codeTokens.length}%%`;
+      codeTokens.push(match);
+      return token;
     });
 
-    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-    html = html.replace(/^##### (.*$)/gim, '<h5>$1</h5>');
-    html = html.replace(/^#### (.*$)/gim, '<h4>$1</h4>');
-    html = html.replace(/^### (.*$)/gim, '<h3>$1</h3>');
-    html = html.replace(/^## (.*$)/gim, '<h2>$1</h2>');
-    html = html.replace(/^# (.*$)/gim, '<h1>$1</h1>');
-    html = html.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    html = html.replace(/\*([^*]+)\*/g, '<em>$1</em>');
-    html = html.replace(/^\> (.*$)/gim, '<blockquote>$1</blockquote>');
-    html = html.replace(/^\s*-\s+(.*$)/gim, '<li>$1</li>');
-    html = html.replace(/(<li>.*<\/li>)/gims, '<ul>$1</ul>');
-    html = html.replace(/\n\n/g, '<br><br>');
+    // 3. Extrai e renderiza Fórmulas em Bloco ($$ ... $$) com KaTeX
+    const mathBlocks = [];
+    text = text.replace(/\$\$([\s\S]*?)\$\$/g, (match, formula) => {
+      const token = `%%MATH_BLOCK_${mathBlocks.length}%%`;
+      let rendered = '';
+      try {
+        rendered = katex.renderToString(formula.trim(), {
+          displayMode: true,
+          throwOnError: false
+        });
+      } catch {
+        rendered = `<div class="katex-error">${escapeHtml(match)}</div>`;
+      }
+      mathBlocks.push(rendered);
+      return `\n\n${token}\n\n`;
+    });
+
+    // 4. Extrai e renderiza Fórmulas Inline ($ ... $) com KaTeX
+    // Ignora preços como $100 ou $50 e strings sem conteúdo
+    const mathInlines = [];
+    text = text.replace(/(^|[^\$])\$([^\$\n\s](?:[^\$\n]*?[^\$\n\s])?)\$(?!\$)/g, (match, prefix, formula) => {
+      if (/^\d+(?:\.\d+)?$/.test(formula.trim())) {
+        return match;
+      }
+      const token = `%%MATH_INLINE_${mathInlines.length}%%`;
+      let rendered = '';
+      try {
+        rendered = katex.renderToString(formula.trim(), {
+          displayMode: false,
+          throwOnError: false
+        });
+      } catch {
+        rendered = escapeHtml(match);
+      }
+      mathInlines.push(rendered);
+      return `${prefix}${token}`;
+    });
+
+    // 5. Restaura os blocos de código protegidos
+    text = text.replace(/%%CODE_BLOCK_(\d+)%%/g, (_, i) => codeTokens[Number(i)]);
+
+    // 6. Converte markdown completo com Marked (GFM, quebras de linha, tabelas, etc)
+    let html = '';
+    try {
+      html = marked.parse(text);
+    } catch {
+      html = escapeHtml(text).replace(/\n/g, '<br>');
+    }
+
+    // 7. Reinserir fórmulas matemáticas renderizadas pelo KaTeX
+    html = html.replace(/%%MATH_BLOCK_(\d+)%%/g, (_, i) => mathBlocks[Number(i)] || '');
+    html = html.replace(/%%MATH_INLINE_(\d+)%%/g, (_, i) => mathInlines[Number(i)] || '');
 
     return html;
   }
