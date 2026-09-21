@@ -21,6 +21,7 @@ export function loadConfig() {
     llmApiKey: process.env.GEMINI_API_KEY || process.env.DEEPINFRA_API_KEY || process.env.OPENROUTER_API_KEY || process.env.OPENAI_API_KEY || '',
     llmProvider: process.env.GEMINI_API_KEY ? 'gemini' : 'deepinfra', // 'gemini', 'deepinfra', 'openrouter', 'openai', 'custom'
     llmModel: process.env.GEMINI_API_KEY ? 'gemini-2.5-flash' : 'meta-llama/Meta-Llama-3.1-70B-Instruct',
+    verbosity: process.env.JEFF_VERBOSITY || 'concise', // 'concise', 'balanced', 'detailed'
     customBaseUrl: ''
   };
 }
@@ -440,11 +441,12 @@ export async function executeJevDecision(prompt, keys = {}) {
 }
 
 export async function streamLLMResponse(reqBody, res) {
-  const { messages, jevDecision, keys = {} } = reqBody;
+  const { messages, jevDecision, keys = {}, verbosity: reqVerbosity } = reqBody;
   const llmKey = keys.llmApiKey || currentConfig.llmApiKey;
   const llmProvider = keys.llmProvider || currentConfig.llmProvider;
   const llmModel = keys.llmModel || currentConfig.llmModel || 'meta-llama/Meta-Llama-3.1-70B-Instruct';
   const customBaseUrl = keys.customBaseUrl || currentConfig.customBaseUrl;
+  const verbosity = keys.verbosity || reqVerbosity || currentConfig.verbosity || 'concise';
 
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
@@ -542,6 +544,22 @@ ${setupGuide}
     ? llmModel.replace('models/', '')
     : llmModel;
 
+  let verbosityDirectives = '';
+  if (verbosity === 'concise') {
+    verbosityDirectives = `DIRETRIZ DE EXTENSÃO OBRIGATÓRIA: MÁXIMA CONCISÃO E OBJETIVIDADE.
+- NÃO use introduções, saudações, nem frases de abertura como "Como tradutor do Jev..." ou "Apresento a solução a seguir:".
+- Comece IMEDIATAMENTE pela resposta prática ou pelo bloco de código.
+- Apresente o código completo e correto, acompanhado apenas de explicações ultracompactas (em tópicos diretos e essenciais).
+- Elimine todo e qualquer texto de preenchimento, preâmbulo ou prolixidade.`;
+  } else if (verbosity === 'detailed') {
+    verbosityDirectives = `DIRETRIZ DE EXTENSÃO: DETALHADO E DIDÁTICO.
+- Explique o raciocínio completo com profundidade conceitual e pedagógica.
+- Detalhe a mecânica interna da solução, prós/contras e forneça exemplos completos.`;
+  } else {
+    verbosityDirectives = `DIRETRIZ DE EXTENSÃO: EQUILIBRADO.
+- Equilibre código limpo e explicações claras e profissionais sem introduções desnecessárias.`;
+  }
+
   const systemPrompt = {
     role: 'system',
     content: `Você é a inteligência tradutora e sintetizadora (System 2 Translator) do motor de raciocínio Jev (System 1 Reasoner).
@@ -555,10 +573,12 @@ Deliberação oficial do Jev:
 - Especificação Técnica: ${JSON.stringify(codeSpec)}
 - Intenção: ${intent} | Risco: ${risk} | Complexidade: ${complexity} | Rota: ${route}
 
+${verbosityDirectives}
+
 SUA FUNÇÃO COMO TRADUTOR:
-1. Traduza o raciocínio analítico do Jev para uma explicação humana fluente, elegante e didática em português.
+1. Traduza o raciocínio analítico do Jev para uma resposta humana em português, seguindo estritamente a DIRETRIZ DE EXTENSÃO acima.
 2. Gere a solução técnica e o código correspondente seguindo estritamente os passos e restrições planejados pelo Jev.
-3. Não mude a rota nem contradiga as deliberações do Jev. Seja o porta-voz articulado do pensamento dele.`
+3. Não mude a rota nem contradiga as deliberações do Jev. Seja direto e assertivo.`
   };
 
   try {

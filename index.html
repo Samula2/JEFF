@@ -175,10 +175,15 @@
 
           <div class="dock-actions-row">
             <div class="dock-left-tools">
-              <div class="model-select-pill" id="btnDockModel">
+              <div class="model-select-pill" id="btnDockModel" title="Configurar Modelos e Chaves">
                 <span class="dot-model-green"></span>
                 <span id="dockModelLabel">DeepInfra &bull; Llama 3.1 70B</span>
                 <span class="chevron-down">&#9662;</span>
+              </div>
+
+              <div class="verbosity-select-pill" id="btnDockVerbosity" title="Clique para alternar tamanho da resposta: Conciso, Equilibrado ou Detalhado">
+                <span class="verbosity-icon" id="dockVerbosityIcon">&#9889;</span>
+                <span id="dockVerbosityLabel">Conciso</span>
               </div>
             </div>
 
@@ -290,6 +295,24 @@
               <button type="button" class="btn-eye-toggle" data-for="cfgJevKey">&#128065;</button>
             </div>
             <span class="hint-text">Emulador local opera em milissegundos sem chave configurada.</span>
+          </div>
+        </div>
+
+        <!-- SEÇÃO ESTILO DE RESPOSTA (VERBOSIDADE) -->
+        <div class="config-section">
+          <div class="section-badge-row">
+            <span class="badge-tag">Estilo de Resposta</span>
+          </div>
+          <h4>Extensão das Mensagens</h4>
+          <p class="section-desc">Controle o tamanho e nível de detalhe das respostas da IA.</p>
+
+          <div class="form-group">
+            <label for="cfgVerbosity">Modo de Resposta:</label>
+            <select id="cfgVerbosity" class="ag-select">
+              <option value="concise">⚡ Conciso &amp; Direto (Padrão — Sem enrolação)</option>
+              <option value="balanced">⚖️ Equilibrado (Explicação + Código)</option>
+              <option value="detailed">📖 Detalhado &amp; Didático (Aprofundado)</option>
+            </select>
           </div>
         </div>
       </div>

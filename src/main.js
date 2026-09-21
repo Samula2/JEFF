@@ -43,6 +43,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const cfgJevProvider = document.getElementById('cfgJevProvider');
   const cfgJevKey = document.getElementById('cfgJevKey');
+  const cfgVerbosity = document.getElementById('cfgVerbosity');
+  const btnDockVerbosity = document.getElementById('btnDockVerbosity');
+  const dockVerbosityIcon = document.getElementById('dockVerbosityIcon');
+  const dockVerbosityLabel = document.getElementById('dockVerbosityLabel');
+
+  let currentVerbosity = 'concise';
+  const verbosityModes = ['concise', 'balanced', 'detailed'];
+  const verbosityLabels = {
+    concise: { icon: '⚡', label: 'Conciso' },
+    balanced: { icon: '⚖️', label: 'Equilibrado' },
+    detailed: { icon: '📖', label: 'Detalhado' }
+  };
+
+  function updateVerbosityUI(mode) {
+    currentVerbosity = verbosityModes.includes(mode) ? mode : 'concise';
+    try {
+      localStorage.setItem('jeff_verbosity', currentVerbosity);
+    } catch {}
+    if (cfgVerbosity) cfgVerbosity.value = currentVerbosity;
+    if (dockVerbosityIcon && verbosityLabels[currentVerbosity]) {
+      dockVerbosityIcon.textContent = verbosityLabels[currentVerbosity].icon;
+    }
+    if (dockVerbosityLabel && verbosityLabels[currentVerbosity]) {
+      dockVerbosityLabel.textContent = verbosityLabels[currentVerbosity].label;
+    }
+  }
 
   // Estado das Sessões
   let sessions = [];
@@ -280,6 +306,9 @@ document.addEventListener('DOMContentLoaded', () => {
       cfgJevProvider.value = localKeys.jevProvider || serverCfg.jevProvider || 'local';
       cfgJevKey.value = localKeys.jevApiKey || '';
 
+      const savedVerbosity = localStorage.getItem('jeff_verbosity') || localKeys.verbosity || serverCfg.verbosity || 'concise';
+      updateVerbosityUI(savedVerbosity);
+
       handleProviderChange();
       updateTelemetryHeader();
     } catch (err) {
@@ -358,8 +387,23 @@ document.addEventListener('DOMContentLoaded', () => {
       llmModel: cfgLlmModel.value.trim(),
       customBaseUrl: cfgCustomUrl.value.trim(),
       jevProvider: cfgJevProvider.value,
-      jevApiKey: cfgJevKey.value.trim()
+      jevApiKey: cfgJevKey.value.trim(),
+      verbosity: currentVerbosity || 'concise'
     };
+  }
+
+  if (btnDockVerbosity) {
+    btnDockVerbosity.addEventListener('click', () => {
+      const idx = verbosityModes.indexOf(currentVerbosity);
+      const nextMode = verbosityModes[(idx + 1) % verbosityModes.length];
+      updateVerbosityUI(nextMode);
+    });
+  }
+
+  if (cfgVerbosity) {
+    cfgVerbosity.addEventListener('change', () => {
+      updateVerbosityUI(cfgVerbosity.value);
+    });
   }
 
   // Salvar Configurações
@@ -550,7 +594,8 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({
           messages: messagesForLlm,
           jevDecision: jevData,
-          keys: activeKeys
+          keys: activeKeys,
+          verbosity: currentVerbosity || 'concise'
         })
       });
 
