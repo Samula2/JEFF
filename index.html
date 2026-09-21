@@ -305,6 +305,55 @@
                 </div>
               </div>
 
+              <!-- DIVISÃO POR CAMADAS (PIPELINE WATERFALL) -->
+              <div class="bench-layers-box">
+                <div class="bench-layers-header">
+                  <span class="layers-title">⏱️ Latência por Camadas:</span>
+                  <span class="layers-total" id="benchJeffLayersSum">-- ms</span>
+                </div>
+                <div class="bench-layers-list">
+                  <div class="bench-layer-item">
+                    <div class="layer-info">
+                      <span class="layer-dot dot-s1"></span>
+                      <span class="layer-name">1. Deliberação Jev (S1)</span>
+                      <span class="layer-desc">Triagem lógica &amp; risco</span>
+                    </div>
+                    <span class="layer-time" id="layerJeffS1">-- ms</span>
+                  </div>
+                  <div class="bench-layer-item">
+                    <div class="layer-info">
+                      <span class="layer-dot dot-handshake"></span>
+                      <span class="layer-name">2. Handshake Jev ➔ Gemini</span>
+                      <span class="layer-desc">Despacho de contrato &amp; rede</span>
+                    </div>
+                    <span class="layer-time" id="layerJeffHandshake">-- ms</span>
+                  </div>
+                  <div class="bench-layer-item">
+                    <div class="layer-info">
+                      <span class="layer-dot dot-ttft"></span>
+                      <span class="layer-name">3. Gemini 1º Token (TTFT)</span>
+                      <span class="layer-desc">Inferência &amp; síntese LLM</span>
+                    </div>
+                    <span class="layer-time" id="layerJeffTtft">-- ms</span>
+                  </div>
+                  <div class="bench-layer-item">
+                    <div class="layer-info">
+                      <span class="layer-dot dot-stream"></span>
+                      <span class="layer-name">4. Geração &amp; Streaming</span>
+                      <span class="layer-desc">Transmissão contínua</span>
+                    </div>
+                    <span class="layer-time" id="layerJeffStream">-- ms</span>
+                  </div>
+                </div>
+                <!-- Barra Visual Segmentada -->
+                <div class="bench-layer-bar" id="layerBarJeff">
+                  <div class="layer-bar-segment seg-s1" id="barJeffS1" style="width: 0%;" title="1. Jev S1"></div>
+                  <div class="layer-bar-segment seg-handshake" id="barJeffHandshake" style="width: 0%;" title="2. Handshake"></div>
+                  <div class="layer-bar-segment seg-ttft" id="barJeffTtft" style="width: 0%;" title="3. Gemini TTFT"></div>
+                  <div class="layer-bar-segment seg-stream" id="barJeffStream" style="width: 0%;" title="4. Streaming"></div>
+                </div>
+              </div>
+
               <!-- DELIBERAÇÃO DO JEV RESUMIDA -->
               <div class="bench-jev-box" id="benchJeffDecisionBox" style="display: none;">
                 <div class="bench-jev-header">💡 Dedução do Jev: <span id="benchJeffDeduction">...</span></div>
@@ -367,6 +416,55 @@
                 <div class="bench-token-item">
                   <span class="token-label">Vazão (TPS)</span>
                   <span class="token-value" id="benchDirectTps">-- t/s</span>
+                </div>
+              </div>
+
+              <!-- DIVISÃO POR CAMADAS (PIPELINE WATERFALL) -->
+              <div class="bench-layers-box">
+                <div class="bench-layers-header">
+                  <span class="layers-title">⏱️ Latência por Camadas:</span>
+                  <span class="layers-total" id="benchDirectLayersSum">-- ms</span>
+                </div>
+                <div class="bench-layers-list">
+                  <div class="bench-layer-item">
+                    <div class="layer-info">
+                      <span class="layer-dot dot-bypass"></span>
+                      <span class="layer-name">1. Deliberação Jev (S1)</span>
+                      <span class="layer-desc">Bypass direto sem System 1</span>
+                    </div>
+                    <span class="layer-time">0 ms (Bypass)</span>
+                  </div>
+                  <div class="bench-layer-item">
+                    <div class="layer-info">
+                      <span class="layer-dot dot-handshake"></span>
+                      <span class="layer-name">2. Handshake ➔ Gemini Direto</span>
+                      <span class="layer-desc">Despacho da pergunta crua</span>
+                    </div>
+                    <span class="layer-time" id="layerDirectHandshake">-- ms</span>
+                  </div>
+                  <div class="bench-layer-item">
+                    <div class="layer-info">
+                      <span class="layer-dot dot-ttft"></span>
+                      <span class="layer-name">3. Gemini 1º Token (TTFT)</span>
+                      <span class="layer-desc">Inferência &amp; síntese LLM</span>
+                    </div>
+                    <span class="layer-time" id="layerDirectTtft">-- ms</span>
+                  </div>
+                  <div class="bench-layer-item">
+                    <div class="layer-info">
+                      <span class="layer-dot dot-stream"></span>
+                      <span class="layer-name">4. Geração &amp; Streaming</span>
+                      <span class="layer-desc">Transmissão contínua</span>
+                    </div>
+                    <span class="layer-time" id="layerDirectStream">-- ms</span>
+                  </div>
+                </div>
+                <!-- Barra Visual Segmentada -->
+                <div class="bench-layer-bar" id="layerBarDirect">
+                  <div class="layer-bar-segment seg-bypass" id="barDirectS1" style="width: 0%;" title="1. Bypass S1"></div>
+                  <div class="layer-bar-segment seg-handshake" id="barDirectHandshake" style="width: 0%;" title="2. Handshake"></div>
+                  <div class="layer-bar-segment seg-ttft" id="barDirectTtft" style="width: 0%;" title="3. Gemini TTFT"></div>
+                  <div class="layer-bar-segment seg-stream" id="barDirectStream" style="width: 0%;" title="4. Streaming"></div>
                 </div>
               </div>
 

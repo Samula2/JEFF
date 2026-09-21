@@ -91,6 +91,27 @@ document.addEventListener('DOMContentLoaded', () => {
   const benchDirectTotalTokens = document.getElementById('benchDirectTotalTokens');
   const benchDirectTps = document.getElementById('benchDirectTps');
 
+  // Layer Waterfall Elements (JEFF)
+  const benchJeffLayersSum = document.getElementById('benchJeffLayersSum');
+  const layerJeffS1 = document.getElementById('layerJeffS1');
+  const layerJeffHandshake = document.getElementById('layerJeffHandshake');
+  const layerJeffTtft = document.getElementById('layerJeffTtft');
+  const layerJeffStream = document.getElementById('layerJeffStream');
+  const barJeffS1 = document.getElementById('barJeffS1');
+  const barJeffHandshake = document.getElementById('barJeffHandshake');
+  const barJeffTtft = document.getElementById('barJeffTtft');
+  const barJeffStream = document.getElementById('barJeffStream');
+
+  // Layer Waterfall Elements (Gemini Direto)
+  const benchDirectLayersSum = document.getElementById('benchDirectLayersSum');
+  const layerDirectHandshake = document.getElementById('layerDirectHandshake');
+  const layerDirectTtft = document.getElementById('layerDirectTtft');
+  const layerDirectStream = document.getElementById('layerDirectStream');
+  const barDirectS1 = document.getElementById('barDirectS1');
+  const barDirectHandshake = document.getElementById('barDirectHandshake');
+  const barDirectTtft = document.getElementById('barDirectTtft');
+  const barDirectStream = document.getElementById('barDirectStream');
+
   let currentVerbosity = 'concise';
   const verbosityModes = ['concise', 'balanced', 'detailed'];
   const verbosityLabels = {
@@ -1019,6 +1040,7 @@ document.addEventListener('DOMContentLoaded', () => {
       badgeDirectStatus.textContent = 'Executando...';
     }
 
+    // Reset Metrics & Tokens UI
     if (benchJeffJevMs) benchJeffJevMs.textContent = '...';
     if (benchJeffTtft) benchJeffTtft.textContent = '...';
     if (benchJeffTotal) benchJeffTotal.textContent = '...';
@@ -1035,6 +1057,26 @@ document.addEventListener('DOMContentLoaded', () => {
     if (benchDirectTotalTokens) benchDirectTotalTokens.textContent = '...';
     if (benchDirectTps) benchDirectTps.textContent = '...';
 
+    // Reset Layers UI
+    if (benchJeffLayersSum) benchJeffLayersSum.textContent = '...';
+    if (layerJeffS1) layerJeffS1.textContent = '...';
+    if (layerJeffHandshake) layerJeffHandshake.textContent = '...';
+    if (layerJeffTtft) layerJeffTtft.textContent = '...';
+    if (layerJeffStream) layerJeffStream.textContent = '...';
+    if (barJeffS1) barJeffS1.style.width = '0%';
+    if (barJeffHandshake) barJeffHandshake.style.width = '0%';
+    if (barJeffTtft) barJeffTtft.style.width = '0%';
+    if (barJeffStream) barJeffStream.style.width = '0%';
+
+    if (benchDirectLayersSum) benchDirectLayersSum.textContent = '...';
+    if (layerDirectHandshake) layerDirectHandshake.textContent = '...';
+    if (layerDirectTtft) layerDirectTtft.textContent = '...';
+    if (layerDirectStream) layerDirectStream.textContent = '...';
+    if (barDirectS1) barDirectS1.style.width = '0%';
+    if (barDirectHandshake) barDirectHandshake.style.width = '0%';
+    if (barDirectTtft) barDirectTtft.style.width = '0%';
+    if (barDirectStream) barDirectStream.style.width = '0%';
+
     if (benchJeffOutput) benchJeffOutput.innerHTML = '<span style="color: var(--text-muted); font-style: italic;">Disparando System 1 (Jev)...</span>';
     if (benchDirectOutput) benchDirectOutput.innerHTML = '<span style="color: var(--text-muted); font-style: italic;">Conectando canal direto com Google Gemini...</span>';
     if (benchJeffDecisionBox) benchJeffDecisionBox.style.display = 'none';
@@ -1046,11 +1088,17 @@ document.addEventListener('DOMContentLoaded', () => {
       benchDirectModelTag.textContent = `Gemini Direto (${activeModel.split('/').pop()})`;
     }
 
-    let jeffTtftMs = null;
-    let jeffTotalMs = null;
-    let directTtftMs = null;
-    let directTotalMs = null;
-    let jevLatencyMs = null;
+    let jeffS1Ms = 0;
+    let jeffHandshakeMs = 0;
+    let jeffTtftMs = 0;
+    let jeffStreamMs = 0;
+    let jeffTotalMs = 0;
+
+    let directHandshakeMs = 0;
+    let directTtftMs = 0;
+    let directStreamMs = 0;
+    let directTotalMs = 0;
+
     let jeffUsage = null;
     let directUsage = null;
 
@@ -1058,15 +1106,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const runJeffPipeline = async () => {
       const tStart = performance.now();
       try {
-        // Step A: Jev Decision
+        // Camada 1: Deliberação Jev (S1)
         const jevRes = await fetch('/api/jev/decision', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ prompt: promptText, keys: activeKeys })
         });
         const jevData = await jevRes.json();
-        jevLatencyMs = Math.round(performance.now() - tStart);
-        if (benchJeffJevMs) benchJeffJevMs.textContent = `${jevLatencyMs} ms`;
+        const tJevDone = performance.now();
+        jeffS1Ms = Math.round(tJevDone - tStart);
+        if (benchJeffJevMs) benchJeffJevMs.textContent = `${jeffS1Ms} ms`;
+        if (layerJeffS1) layerJeffS1.textContent = `${jeffS1Ms} ms`;
 
         // Render Jev Preview
         const ans = jevData?.answers || {};
@@ -1078,7 +1128,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (benchJeffOutput) benchJeffOutput.innerHTML = '<span style="color: var(--text-muted); font-style: italic;">Jev concluiu. Traduzindo resposta com Gemini...</span>';
 
-        // Step B: Gemini Stream with Jev Deliberation
+        // Camada 2: Handshake & Despacho para Gemini
+        const tFetchStart = performance.now();
         const chatRes = await fetch('/api/llm/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1089,11 +1140,15 @@ document.addEventListener('DOMContentLoaded', () => {
             verbosity: currentVerbosity || 'concise'
           })
         });
+        const tFetchDone = performance.now();
+        jeffHandshakeMs = Math.max(1, Math.round(tFetchDone - tFetchStart));
+        if (layerJeffHandshake) layerJeffHandshake.textContent = `${jeffHandshakeMs} ms`;
 
         const reader = chatRes.body.getReader();
         const decoder = new TextDecoder();
         let streamedMd = '';
         let buffer = '';
+        let tFirstToken = null;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -1114,9 +1169,13 @@ document.addEventListener('DOMContentLoaded', () => {
                   jeffUsage = parsed.usage;
                 }
                 if (parsed.text) {
-                  if (jeffTtftMs === null) {
-                    jeffTtftMs = Math.round(performance.now() - tStart);
-                    if (benchJeffTtft) benchJeffTtft.textContent = `${jeffTtftMs} ms`;
+                  if (tFirstToken === null) {
+                    tFirstToken = performance.now();
+                    // Camada 3: Inferência Gemini até 1º Token
+                    jeffTtftMs = Math.max(1, Math.round(tFirstToken - tFetchDone));
+                    const ttftFromStart = Math.round(tFirstToken - tStart);
+                    if (benchJeffTtft) benchJeffTtft.textContent = `${ttftFromStart} ms`;
+                    if (layerJeffTtft) layerJeffTtft.textContent = `${jeffTtftMs} ms`;
                   }
                   streamedMd += parsed.text;
                   if (benchJeffOutput) benchJeffOutput.innerHTML = renderMarkdown(streamedMd);
@@ -1126,8 +1185,27 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
 
-        jeffTotalMs = Math.round(performance.now() - tStart);
+        const tEnd = performance.now();
+        jeffTotalMs = Math.round(tEnd - tStart);
+        // Camada 4: Geração contínua & Streaming
+        jeffStreamMs = tFirstToken ? Math.max(1, Math.round(tEnd - tFirstToken)) : 0;
+
+        if (layerJeffStream) layerJeffStream.textContent = `${jeffStreamMs} ms`;
+        if (benchJeffLayersSum) benchJeffLayersSum.textContent = `${jeffTotalMs} ms`;
         if (benchJeffTotal) benchJeffTotal.textContent = `${jeffTotalMs} ms`;
+
+        // Atualiza larguras da barra visual segmentada
+        if (jeffTotalMs > 0) {
+          const pS1 = Math.round((jeffS1Ms / jeffTotalMs) * 100);
+          const pHandshake = Math.round((jeffHandshakeMs / jeffTotalMs) * 100);
+          const pTtft = Math.round((jeffTtftMs / jeffTotalMs) * 100);
+          const pStream = Math.max(0, 100 - (pS1 + pHandshake + pTtft));
+          if (barJeffS1) barJeffS1.style.width = `${pS1}%`;
+          if (barJeffHandshake) barJeffHandshake.style.width = `${pHandshake}%`;
+          if (barJeffTtft) barJeffTtft.style.width = `${pTtft}%`;
+          if (barJeffStream) barJeffStream.style.width = `${pStream}%`;
+        }
+
         if (badgeJeffStatus) {
           badgeJeffStatus.className = 'bench-status-badge completed';
           badgeJeffStatus.textContent = '✓ Concluído';
@@ -1153,6 +1231,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const runDirectPipeline = async () => {
       const tStart = performance.now();
       try {
+        // Camada 2: Handshake & Despacho direto ao Gemini
+        const tFetchStart = performance.now();
         const directRes = await fetch('/api/llm/chat', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1164,11 +1244,15 @@ document.addEventListener('DOMContentLoaded', () => {
             model: activeModel
           })
         });
+        const tFetchDone = performance.now();
+        directHandshakeMs = Math.max(1, Math.round(tFetchDone - tFetchStart));
+        if (layerDirectHandshake) layerDirectHandshake.textContent = `${directHandshakeMs} ms`;
 
         const reader = directRes.body.getReader();
         const decoder = new TextDecoder();
         let streamedMd = '';
         let buffer = '';
+        let tFirstToken = null;
 
         while (true) {
           const { done, value } = await reader.read();
@@ -1189,9 +1273,13 @@ document.addEventListener('DOMContentLoaded', () => {
                   directUsage = parsed.usage;
                 }
                 if (parsed.text) {
-                  if (directTtftMs === null) {
-                    directTtftMs = Math.round(performance.now() - tStart);
-                    if (benchDirectTtft) benchDirectTtft.textContent = `${directTtftMs} ms`;
+                  if (tFirstToken === null) {
+                    tFirstToken = performance.now();
+                    // Camada 3: Inferência Gemini até 1º Token
+                    directTtftMs = Math.max(1, Math.round(tFirstToken - tFetchDone));
+                    const ttftFromStart = Math.round(tFirstToken - tStart);
+                    if (benchDirectTtft) benchDirectTtft.textContent = `${ttftFromStart} ms`;
+                    if (layerDirectTtft) layerDirectTtft.textContent = `${directTtftMs} ms`;
                   }
                   streamedMd += parsed.text;
                   if (benchDirectOutput) benchDirectOutput.innerHTML = renderMarkdown(streamedMd);
@@ -1201,8 +1289,25 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         }
 
-        directTotalMs = Math.round(performance.now() - tStart);
+        const tEnd = performance.now();
+        directTotalMs = Math.round(tEnd - tStart);
+        // Camada 4: Geração contínua & Streaming
+        directStreamMs = tFirstToken ? Math.max(1, Math.round(tEnd - tFirstToken)) : 0;
+
+        if (layerDirectStream) layerDirectStream.textContent = `${directStreamMs} ms`;
+        if (benchDirectLayersSum) benchDirectLayersSum.textContent = `${directTotalMs} ms`;
         if (benchDirectTotal) benchDirectTotal.textContent = `${directTotalMs} ms`;
+
+        // Atualiza larguras da barra visual segmentada
+        if (directTotalMs > 0) {
+          const pHandshake = Math.round((directHandshakeMs / directTotalMs) * 100);
+          const pTtft = Math.round((directTtftMs / directTotalMs) * 100);
+          const pStream = Math.max(0, 100 - (pHandshake + pTtft));
+          if (barDirectHandshake) barDirectHandshake.style.width = `${pHandshake}%`;
+          if (barDirectTtft) barDirectTtft.style.width = `${pTtft}%`;
+          if (barDirectStream) barDirectStream.style.width = `${pStream}%`;
+        }
+
         if (badgeDirectStatus) {
           badgeDirectStatus.className = 'bench-status-badge completed';
           badgeDirectStatus.textContent = '✓ Concluído';
@@ -1228,16 +1333,15 @@ document.addEventListener('DOMContentLoaded', () => {
     await Promise.allSettled([runJeffPipeline(), runDirectPipeline()]);
 
     // Análise e Veredito Comparativo
-    if (jeffTtftMs !== null && directTtftMs !== null && verdictTitle && verdictText && benchVerdictCard) {
-      const deltaTtft = jeffTtftMs - directTtftMs;
-      verdictTitle.textContent = '⚖️ Veredito de Desempenho & Gestão de Tokens';
+    if (verdictTitle && verdictText && benchVerdictCard) {
+      verdictTitle.textContent = '⚖️ Veredito de Desempenho & Camadas de Latência';
 
-      let speedText = '';
-      if (deltaTtft > 0) {
-        speedText = `O <strong>Gemini Direto</strong> começou a responder <strong>${deltaTtft}ms mais rápido</strong> no 1º token (sem etapa de System 1). O <strong>JEFF</strong> utilizou <strong>${jevLatencyMs || 25}ms</strong> deliberando com o Jev, fornecendo diagnóstico de intenção, contenção de risco e restrições estruturais antes da síntese.`;
-      } else {
-        speedText = `O <strong>JEFF</strong> teve tempo de 1º token comparável ou até superior (diferença de <strong>${Math.abs(deltaTtft)}ms</strong>), combinando a deliberação analítica do Jev (${jevLatencyMs || 25}ms) com síntese concisa.`;
-      }
+      let speedText = `⏱️ <strong>Decomposição de Latência por Camada:</strong><br>
+      • <strong>Camada 1 (Deliberação Jev S1):</strong> <code>${jeffS1Ms}ms</code> no JEFF (vs <code>0ms</code> no Gemini Direto — bypass)<br>
+      • <strong>Camada 2 (Handshake / Envio):</strong> <code>${jeffHandshakeMs}ms</code> no JEFF vs <code>${directHandshakeMs}ms</code> no Direto<br>
+      • <strong>Camada 3 (Inferência Gemini 1º Token):</strong> <code>${jeffTtftMs}ms</code> no JEFF vs <code>${directTtftMs}ms</code> no Direto<br>
+      • <strong>Camada 4 (Transmissão &amp; Streaming):</strong> <code>${jeffStreamMs}ms</code> no JEFF vs <code>${directStreamMs}ms</code> no Direto<br>
+      • <strong>Tempo Total:</strong> <code>${jeffTotalMs}ms</code> (JEFF) vs <code>${directTotalMs}ms</code> (Direto)`;
 
       let tokenText = '';
       if (jeffUsage && directUsage) {
