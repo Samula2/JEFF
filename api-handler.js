@@ -93,7 +93,10 @@ export function localJevSimulate(prompt) {
   }
 
   // Dedução e Raciocínio Profundo do Jev (Motor Lógico Central)
-  let techDomain = 'Geral / Engenharia de Software';
+  const isSoftware = intent === 'code_engineering' || intent === 'architecture_planning' ||
+    /\b(código|codigo|função|funcao|script|bug|api|software|programa|programar|algoritmo|classe|banco|sql|endpoint|typescript|python|javascript|react|rust|node|css|html|dev|backend|frontend|git|json|docker|deploy|linux|terminal)\b/i.test(p);
+
+  let techDomain = isSoftware ? 'Geral / Engenharia de Software' : 'Conhecimento Geral & Vida Prática';
   if (/typescript|ts/.test(p)) techDomain = 'TypeScript';
   else if (/javascript|js|node/.test(p)) techDomain = 'JavaScript / Node.js';
   else if (/python/.test(p)) techDomain = 'Python';
@@ -102,15 +105,19 @@ export function localJevSimulate(prompt) {
 
   const premises = [
     `Objetivo do usuário: "${prompt.slice(0, 90)}${prompt.length > 90 ? '...' : ''}"`,
-    `Ecossistema e tecnologia detectados: ${techDomain}`,
+    `Domínio avaliado pelo Jev: ${techDomain}`,
     `Nível de urgência e risco: ${riskAssessment === 'true' ? 'Crítico (Produção/Falha)' : 'Controlado'}`
   ];
 
   let coreDeduction = '';
-  let constraints = [
+  let constraints = isSoftware ? [
     'Preservar padrão idiomático e manutenibilidade do código',
     'Seguir princípio YAGNI (sem dependências ou abstrações desnecessárias)',
     'Garantir tratamento defensivo de falhas e validação de tipos'
+  ] : [
+    'Priorizar precisão factual, viabilidade real e transparência',
+    'Alertar sobre exigências legais, custos ocultos ou restrições práticas',
+    'Responder em linguagem natural direta, sem criar código ou analogias computacionais desnecessárias'
   ];
   let executionSteps = [];
 
@@ -123,13 +130,23 @@ export function localJevSimulate(prompt) {
       'Gerar exemplo prático de consumo com asserções de teste.'
     ];
   } else if (intent === 'explanation_learning') {
-    coreDeduction = `A dúvida envolve compreensão de causa e efeito em ${techDomain}. O Jev determinou decompor a explicação a partir do mecanismo de baixo nível para a aplicação prática, evitando jargões vazios.`;
-    executionSteps = [
-      'Definir o problema real que o conceito resolve.',
-      'Ilustrar a mecânica interna passo a passo.',
-      'Contrastar armadilhas e casos de erro comuns.',
-      'Sintetizar recomendação prática de uso.'
-    ];
+    if (isSoftware) {
+      coreDeduction = `A dúvida envolve compreensão de causa e efeito em ${techDomain}. O Jev determinou decompor a explicação a partir do mecanismo de baixo nível para a aplicação prática, evitando jargões vazios.`;
+      executionSteps = [
+        'Definir o problema real que o conceito resolve.',
+        'Ilustrar a mecânica interna passo a passo.',
+        'Contrastar armadilhas e casos de erro comuns.',
+        'Sintetizar recomendação prática de uso.'
+      ];
+    } else {
+      coreDeduction = `A dúvida trata de uma necessidade do mundo real (${techDomain}). O Jev determinou apresentar orientações pragmáticas, alternativas viáveis e pontos críticos de atenção.`;
+      executionSteps = [
+        'Mapear os caminhos e programas reais aplicáveis.',
+        'Explicar os critérios de elegibilidade e como funcionam na prática.',
+        'Destacar custos indiretos, exigências legais e armadilhas comuns.',
+        'Sintetizar o passo a passo de como começar.'
+      ];
+    }
   } else if (intent === 'security_critical') {
     coreDeduction = `Ação com potencial risco detectada pelo Jev. Exige barreira estrita de guardrail, sanitização de inputs e isolamento preventivo.`;
     constraints.unshift('Requer validação explícita de impacto antes de execução');
@@ -190,10 +207,16 @@ export function localJevSimulate(prompt) {
       core_deduction: coreDeduction,
       constraints,
       execution_steps: executionSteps,
-      code_specification: {
+      code_specification: isSoftware ? {
         domain: techDomain,
         paradigm: 'modular / defensivo',
-        style: 'production-ready'
+        style: 'production-ready',
+        requires_code: true
+      } : {
+        domain: techDomain,
+        paradigm: 'não aplicável (orientação conceitual/prática)',
+        style: 'linguagem natural direta',
+        requires_code: false
       }
     }
   };
@@ -221,7 +244,10 @@ export function formatJevPayload(rawResponse, prompt, source, latencyMs) {
   const routeChoice = answers.action_route?.choice || answers.action_route?.value || 'code_synthesis';
   const routeConf = answers.action_route?.confidence || 0.9;
 
-  let techDomain = 'Geral / Engenharia de Software';
+  const isSoftware = intentChoice === 'code_engineering' || intentChoice === 'architecture_planning' ||
+    /\b(código|codigo|função|funcao|script|bug|api|software|programa|programar|algoritmo|classe|banco|sql|endpoint|typescript|python|javascript|react|rust|node|css|html|dev|backend|frontend|git|json|docker|deploy|linux|terminal)\b/i.test(p);
+
+  let techDomain = isSoftware ? 'Geral / Engenharia de Software' : 'Conhecimento Geral & Vida Prática';
   if (/redis|lua/.test(p)) techDomain = 'Redis / Lua / Sistemas Distribuídos';
   else if (/postgres|sql|banco/.test(p)) techDomain = 'PostgreSQL / Bancos Relacionais';
   else if (/typescript|ts/.test(p)) techDomain = 'TypeScript';
@@ -236,10 +262,14 @@ export function formatJevPayload(rawResponse, prompt, source, latencyMs) {
   ];
 
   let coreDeduction = '';
-  let constraints = [
+  let constraints = isSoftware ? [
     'Preservar padrão idiomático e manutenibilidade do código',
     'Seguir princípio YAGNI (sem dependências ou abstrações desnecessárias)',
     'Garantir tratamento defensivo de falhas e validação de tipos'
+  ] : [
+    'Priorizar precisão factual, viabilidade real e transparência',
+    'Alertar sobre exigências legais, custos ocultos ou restrições práticas',
+    'Responder em linguagem natural direta, sem criar código ou analogias computacionais desnecessárias'
   ];
   let executionSteps = [];
 
@@ -262,13 +292,23 @@ export function formatJevPayload(rawResponse, prompt, source, latencyMs) {
       ];
     }
   } else if (intentChoice === 'explanation_learning') {
-    coreDeduction = `A dúvida envolve compreensão de causa e efeito em ${techDomain}. O Jev determinou decompor a explicação a partir do mecanismo de baixo nível para a aplicação prática, evitando jargões vazios.`;
-    executionSteps = [
-      'Definir o problema real que o conceito resolve.',
-      'Ilustrar a mecânica interna passo a passo.',
-      'Contrastar armadilhas e casos de erro comuns.',
-      'Sintetizar recomendação prática de uso.'
-    ];
+    if (isSoftware) {
+      coreDeduction = `A dúvida envolve compreensão de causa e efeito em ${techDomain}. O Jev determinou decompor a explicação a partir do mecanismo de baixo nível para a aplicação prática, evitando jargões vazios.`;
+      executionSteps = [
+        'Definir o problema real que o conceito resolve.',
+        'Ilustrar a mecânica interna passo a passo.',
+        'Contrastar armadilhas e casos de erro comuns.',
+        'Sintetizar recomendação prática de uso.'
+      ];
+    } else {
+      coreDeduction = `A dúvida trata de uma necessidade do mundo real (${techDomain}). O Jev determinou apresentar orientações pragmáticas, alternativas viáveis e pontos críticos de atenção.`;
+      executionSteps = [
+        'Mapear os caminhos e programas reais aplicáveis.',
+        'Explicar os critérios de elegibilidade e como funcionam na prática.',
+        'Destacar custos indiretos, exigências legais e armadilhas comuns.',
+        'Sintetizar o passo a passo de como começar.'
+      ];
+    }
   } else if (intentChoice === 'security_critical') {
     coreDeduction = `Ação com potencial risco detectada pelo Jev. Exige barreira estrita de guardrail, sanitização de inputs e isolamento preventivo.`;
     constraints.unshift('Requer validação explícita de impacto antes de execução');
@@ -320,10 +360,16 @@ export function formatJevPayload(rawResponse, prompt, source, latencyMs) {
       core_deduction: coreDeduction,
       constraints,
       execution_steps: executionSteps,
-      code_specification: {
+      code_specification: isSoftware ? {
         domain: techDomain,
         paradigm: 'modular / defensivo',
-        style: 'production-ready'
+        style: 'production-ready',
+        requires_code: true
+      } : {
+        domain: techDomain,
+        paradigm: 'não aplicável (orientação conceitual/prática)',
+        style: 'linguagem natural direta',
+        requires_code: false
       },
       raw_typesafe: answers
     }
@@ -548,16 +594,16 @@ ${setupGuide}
   if (verbosity === 'concise') {
     verbosityDirectives = `DIRETRIZ DE EXTENSÃO OBRIGATÓRIA: MÁXIMA CONCISÃO E OBJETIVIDADE.
 - NÃO use introduções, saudações, nem frases de abertura como "Como tradutor do Jev..." ou "Apresento a solução a seguir:".
-- Comece IMEDIATAMENTE pela resposta prática ou pelo bloco de código.
-- Apresente o código completo e correto, acompanhado apenas de explicações ultracompactas (em tópicos diretos e essenciais).
+- Se for dúvida de programação/software: comece IMEDIATAMENTE pelo código correto e bem estruturado, com explicações mínimas e diretas em tópicos.
+- Se NÃO for dúvida de programação (perguntas gerais, viagens, finanças, cotidiano): responda DIRETAMENTE em tópicos objetivos e realistas. NUNCA gere blocos de código nem metáforas computacionais forçadas.
 - Elimine todo e qualquer texto de preenchimento, preâmbulo ou prolixidade.`;
   } else if (verbosity === 'detailed') {
     verbosityDirectives = `DIRETRIZ DE EXTENSÃO: DETALHADO E DIDÁTICO.
-- Explique o raciocínio completo com profundidade conceitual e pedagógica.
-- Detalhe a mecânica interna da solução, prós/contras e forneça exemplos completos.`;
+- Explique o raciocínio completo com profundidade conceitual e passos acionáveis.
+- Forneça código apenas se a pergunta for de desenvolvimento de software. Se for assunto geral, aprofunde em texto humano sem inventar código.`;
   } else {
     verbosityDirectives = `DIRETRIZ DE EXTENSÃO: EQUILIBRADO.
-- Equilibre código limpo e explicações claras e profissionais sem introduções desnecessárias.`;
+- Resposta limpa, profissional e equilibrada sem introduções vazias. Gere código apenas quando o assunto for desenvolvimento.`;
   }
 
   const systemPrompt = {
@@ -577,8 +623,9 @@ ${verbosityDirectives}
 
 SUA FUNÇÃO COMO TRADUTOR:
 1. Traduza o raciocínio analítico do Jev para uma resposta humana em português, seguindo estritamente a DIRETRIZ DE EXTENSÃO acima.
-2. Gere a solução técnica e o código correspondente seguindo estritamente os passos e restrições planejados pelo Jev.
-3. Não mude a rota nem contradiga as deliberações do Jev. Seja direto e assertivo.`
+2. SE a pergunta for sobre desenvolvimento de software ou código: gere a solução técnica e o código correspondente seguindo estritamente os passos e restrições planejados pelo Jev.
+3. SE a pergunta for sobre conhecimentos gerais, viagens, finanças, cotidiano ou temas não computacionais: NUNCA crie código, scripts ou metáforas de programação. Responda diretamente com orientações factuais e práticas da vida real.
+4. Não mude a rota nem contradiga as deliberações do Jev. Seja direto e assertivo.`
   };
 
   try {
