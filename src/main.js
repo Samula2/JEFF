@@ -259,46 +259,52 @@ document.addEventListener('DOMContentLoaded', () => {
       messagesStream.innerHTML = `
         <div class="welcome-card" id="welcomeView">
           <div class="welcome-hero-mark">
-            <div class="hero-mega-orb">
-              <span class="orb-specular-glare"></span>
-              <span class="hero-orb-letter">J</span>
+            <div class="ln4-racing-badge">
+              <span class="ln4-badge-number">04</span>
+              <span class="ln4-badge-slash">//</span>
+              <span class="ln4-badge-label">JEFF</span>
             </div>
           </div>
 
-          <h1 class="welcome-headline">JEFF</h1>
+          <div class="welcome-eyebrow">
+            <span class="speed-flag">&#127937;</span>
+            <span>HIGH-OCTANE REASONING &bull; TELEMETRY SYSTEM</span>
+          </div>
+
+          <h1 class="welcome-headline">JEFF <span class="accent-lime">// LN4</span></h1>
           <p class="welcome-subtext">
-            Assistente técnico em computação otimista com motor de reflexo instantâneo e modelos generativos de alta precisão.
+            Motor de reflexo analítico sub-30ms (System 1) conectado a síntese generativa de alta velocidade (System 2).
           </p>
 
           <div class="suggestions-grid">
             <button class="suggestion-card scenario-trigger" data-prompt="Como o JEFF decide rotas e intenções antes de acionar a LLM?">
-              <span class="card-glass-glare"></span>
               <div class="sugg-header">
-                <span class="sugg-badge-orb aqua">&#128167;</span>
+                <span class="sugg-badge-racing">[SECTOR 01]</span>
                 <span class="sugg-category">Arquitetura</span>
               </div>
               <div class="sugg-title">Como o JEFF decide rotas?</div>
               <div class="sugg-desc">Separação entre reflexo rápido de decisão em sub-30ms e o modelo generativo</div>
+              <div class="sugg-footer-tag">TELEMETRIA RAPIDA &rsaquo;</div>
             </button>
 
             <button class="suggestion-card scenario-trigger" data-prompt="Como diagnosticar um erro 500 intermitente na API de checkout em produção?">
-              <span class="card-glass-glare"></span>
               <div class="sugg-header">
-                <span class="sugg-badge-orb green">&#127807;</span>
+                <span class="sugg-badge-racing papaya">[SECTOR 02]</span>
                 <span class="sugg-category">Operações</span>
               </div>
               <div class="sugg-title">Diagnóstico em produção</div>
               <div class="sugg-desc">Contenção de incidentes, idempotência e mitigação de risco de falhas</div>
+              <div class="sugg-footer-tag">TRIAGEM CRÍTICA &rsaquo;</div>
             </button>
 
             <button class="suggestion-card scenario-trigger" data-prompt="Implemente uma estrutura de fila concorrente com controle de backpressure em TypeScript">
-              <span class="card-glass-glare"></span>
               <div class="sugg-header">
-                <span class="sugg-badge-orb gold">&#9889;</span>
+                <span class="sugg-badge-racing">[SECTOR 03]</span>
                 <span class="sugg-category">Engenharia</span>
               </div>
               <div class="sugg-title">Desenvolvimento de código</div>
               <div class="sugg-desc">Fila concorrente com controle de vazão, backpressure e tipagem estrita</div>
+              <div class="sugg-footer-tag">ALTA PERFORMANCE &rsaquo;</div>
             </button>
           </div>
         </div>
@@ -1008,24 +1014,20 @@ document.addEventListener('DOMContentLoaded', () => {
     return html;
   }
 
-  // Theme Switcher: Light Aero vs Dark Aero vs LN4 Racing (Lando Norris)
+  // Theme Switcher: LN4 Racing Stealth (Default) vs High-Contrast vs Daylight
   const themes = [
-    { id: 'light-aero', name: 'Light Aero', icon: '☀️' },
-    { id: 'dark-aero', name: 'Dark Aero', icon: '🌙' },
-    { id: 'theme-ln4', name: 'LN4 Racing', icon: '⚡' }
+    { id: 'theme-ln4', name: 'LN4 Carbon', icon: '⚡' },
+    { id: 'dark-aero', name: 'LN4 High-Contrast', icon: '🏎️' },
+    { id: 'light-aero', name: 'LN4 Daylight', icon: '☀️' }
   ];
-  let currentTheme = 'light-aero';
+  let currentTheme = 'theme-ln4';
 
   function setTheme(themeId) {
     const valid = themes.find(t => t.id === themeId);
-    currentTheme = valid ? valid.id : 'light-aero';
+    currentTheme = valid ? valid.id : 'theme-ln4';
 
-    document.body.classList.remove('dark-aero', 'theme-ln4');
-    if (currentTheme === 'dark-aero') {
-      document.body.classList.add('dark-aero');
-    } else if (currentTheme === 'theme-ln4') {
-      document.body.classList.add('theme-ln4');
-    }
+    document.body.classList.remove('dark-aero', 'light-aero', 'theme-ln4');
+    document.body.classList.add(currentTheme);
 
     const cur = themes.find(t => t.id === currentTheme);
     const nextIndex = (themes.findIndex(t => t.id === currentTheme) + 1) % themes.length;
@@ -1046,16 +1048,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function initTheme() {
     const saved = localStorage.getItem('jeff_theme_mode');
-    if (saved) {
-      if (saved === 'dark-aero' || saved === 'true') {
-        setTheme('dark-aero');
-      } else if (saved === 'theme-ln4' || saved === 'ln4') {
-        setTheme('theme-ln4');
-      } else {
-        setTheme('light-aero');
-      }
+    if (saved && themes.some(t => t.id === saved)) {
+      setTheme(saved);
     } else {
-      setTheme('light-aero');
+      setTheme('theme-ln4');
     }
   }
 
