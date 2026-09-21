@@ -3230,6 +3230,514 @@ body.dark-aero .bot-response-text h3 {
   color: #7dd3fc;
 }
 
+/* ========================================================
+   LN4 RACING DESIGN SYSTEM (Inspired by landonorris.com)
+   Signature Colors: Neon Volt #d2ff00 • McLaren Papaya #ff8000 • Carbon #0c0f04
+   ======================================================== */
+body.theme-ln4 {
+  background-color: #0c0f04;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(210, 255, 0, 0.12) 0%, transparent 65%),
+    linear-gradient(rgba(210, 255, 0, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(210, 255, 0, 0.028) 1px, transparent 1px);
+  background-size: 100% 100%, 36px 36px, 36px 36px;
+  color: #f4f4f5;
+}
+
+body.theme-ln4 ::selection {
+  background-color: #d2ff00;
+  color: #0c0f04;
+}
+
+/* LN4 Topbar */
+body.theme-ln4 .app-topbar {
+  background: rgba(12, 15, 4, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(210, 255, 0, 0.25);
+  box-shadow: 0 4px 25px rgba(0, 0, 0, 0.7), 0 1px 0 rgba(210, 255, 0, 0.08);
+}
+
+body.theme-ln4 .breadcrumb-glass-pill {
+  background: rgba(20, 26, 7, 0.85);
+  border: 1px solid rgba(210, 255, 0, 0.25);
+  box-shadow: 0 0 10px rgba(210, 255, 0, 0.06);
+}
+body.theme-ln4 .crumb-icon { color: #d2ff00; }
+body.theme-ln4 .crumb-root { color: #849673; }
+body.theme-ln4 .crumb-sep { color: #434e35; }
+body.theme-ln4 .crumb-active { color: #d2ff00; font-family: var(--font-mono); }
+
+body.theme-ln4 .topbar-center-nav {
+  background: rgba(18, 23, 6, 0.95);
+  border: 1px solid rgba(210, 255, 0, 0.3);
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.6);
+}
+body.theme-ln4 .topbar-tab-btn {
+  color: #9cb58a;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+body.theme-ln4 .topbar-tab-btn:hover {
+  color: #ffffff;
+  background: rgba(210, 255, 0, 0.12);
+}
+body.theme-ln4 .topbar-tab-btn.active {
+  background: #d2ff00;
+  color: #0c0f04;
+  border-color: #d2ff00;
+  font-weight: 800;
+  box-shadow: 0 0 16px rgba(210, 255, 0, 0.45);
+}
+body.theme-ln4 .tab-badge-new {
+  background: #ff8000;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+body.theme-ln4 .telemetry-pill-antigravity {
+  background: rgba(18, 23, 6, 0.9);
+  border: 1px solid rgba(210, 255, 0, 0.25);
+  color: #ffffff;
+}
+body.theme-ln4 .status-indicator {
+  background: radial-gradient(circle at 35% 30%, #facc15 0%, #d2ff00 60%, #4d7c0f 100%);
+  box-shadow: 0 0 8px #d2ff00;
+}
+body.theme-ln4 .t-label { color: #849673; }
+body.theme-ln4 .t-val { color: #d2ff00; }
+body.theme-ln4 .t-sep { color: #3a452a; }
+body.theme-ln4 .t-latency { color: #d2ff00; }
+
+body.theme-ln4 .btn-theme-toggle,
+body.theme-ln4 .btn-topbar-settings {
+  background: rgba(20, 26, 7, 0.85);
+  border: 1px solid rgba(210, 255, 0, 0.3);
+  color: #d2ff00;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+body.theme-ln4 .btn-theme-toggle:hover,
+body.theme-ln4 .btn-topbar-settings:hover {
+  background: #d2ff00;
+  color: #0c0f04;
+  box-shadow: 0 0 16px rgba(210, 255, 0, 0.4);
+}
+
+/* LN4 Sidebar */
+body.theme-ln4 .app-sidebar {
+  background: rgba(10, 13, 3, 0.96);
+  border-right: 1px solid rgba(210, 255, 0, 0.18);
+  box-shadow: 4px 0 25px rgba(0, 0, 0, 0.8);
+}
+body.theme-ln4 .brand-title {
+  color: #ffffff;
+}
+body.theme-ln4 .brand-title .accent {
+  color: #d2ff00;
+  text-shadow: 0 0 12px rgba(210, 255, 0, 0.5);
+}
+body.theme-ln4 .brand-badge {
+  background: rgba(210, 255, 0, 0.15);
+  border-color: #d2ff00;
+  color: #d2ff00;
+  font-family: var(--font-mono);
+}
+body.theme-ln4 .btn-new-chat {
+  background: linear-gradient(135deg, #d2ff00 0%, #b5e000 100%);
+  color: #0c0f04;
+  border: 1px solid #d2ff00;
+  font-weight: 800;
+  box-shadow: 0 4px 18px rgba(210, 255, 0, 0.35);
+  font-family: var(--font-sans);
+}
+body.theme-ln4 .btn-new-chat:hover {
+  box-shadow: 0 6px 26px rgba(210, 255, 0, 0.6);
+  transform: translateY(-2px);
+}
+body.theme-ln4 .history-title {
+  color: #849673;
+  font-family: var(--font-mono);
+}
+body.theme-ln4 .session-item {
+  background: rgba(18, 23, 6, 0.7);
+  border: 1px solid rgba(210, 255, 0, 0.12);
+  color: #e4e4e7;
+}
+body.theme-ln4 .session-item:hover {
+  background: rgba(26, 33, 8, 0.9);
+  border-color: rgba(210, 255, 0, 0.4);
+  color: #d2ff00;
+}
+body.theme-ln4 .session-item.active {
+  background: linear-gradient(90deg, rgba(210, 255, 0, 0.22) 0%, rgba(210, 255, 0, 0.05) 100%);
+  border-left: 3px solid #d2ff00;
+  border-color: #d2ff00;
+  color: #ffffff;
+}
+body.theme-ln4 .session-time {
+  color: #d2ff00;
+}
+body.theme-ln4 .sidebar-view-btn {
+  color: #9cb58a;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+body.theme-ln4 .sidebar-view-btn:hover {
+  background: rgba(210, 255, 0, 0.1);
+  color: #d2ff00;
+}
+body.theme-ln4 .sidebar-view-btn.active {
+  background: rgba(210, 255, 0, 0.15);
+  border-color: #d2ff00;
+  color: #d2ff00;
+}
+body.theme-ln4 .view-btn-badge {
+  background: #ff8000;
+  color: #ffffff;
+  border-color: #ff8000;
+}
+body.theme-ln4 .footer-btn {
+  background: rgba(18, 23, 6, 0.8);
+  border-color: rgba(210, 255, 0, 0.2);
+  color: #9cb58a;
+}
+body.theme-ln4 .footer-btn:hover {
+  border-color: #d2ff00;
+  color: #d2ff00;
+}
+
+/* LN4 Welcome Hero */
+body.theme-ln4 .hero-mega-orb {
+  background: radial-gradient(circle at 35% 30%, #d2ff00 0%, #4d7c0f 70%, #1a2e05 100%);
+  box-shadow: 0 10px 40px rgba(210, 255, 0, 0.35), inset 0 2px 4px rgba(255, 255, 255, 0.6);
+}
+body.theme-ln4 .hero-orb-letter {
+  color: #0c0f04;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.4);
+}
+body.theme-ln4 .welcome-headline {
+  color: #ffffff;
+  letter-spacing: -0.03em;
+  font-weight: 900;
+}
+body.theme-ln4 .welcome-subtext {
+  color: #849673;
+}
+body.theme-ln4 .suggestion-card {
+  background: rgba(16, 21, 5, 0.85);
+  border: 1px solid rgba(210, 255, 0, 0.2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+body.theme-ln4 .suggestion-card:hover {
+  border-color: #d2ff00;
+  box-shadow: 0 0 22px rgba(210, 255, 0, 0.25);
+  transform: translateY(-2px);
+}
+body.theme-ln4 .sugg-category {
+  color: #d2ff00;
+  font-family: var(--font-mono);
+}
+body.theme-ln4 .sugg-title {
+  color: #ffffff;
+}
+body.theme-ln4 .sugg-desc {
+  color: #849673;
+}
+
+/* LN4 Chat Messages */
+body.theme-ln4 .msg-bubble-user {
+  background: linear-gradient(135deg, #182006 0%, #101503 100%);
+  border: 1px solid #d2ff00;
+  color: #ffffff;
+  box-shadow: 0 4px 20px rgba(210, 255, 0, 0.15), inset 0 1px 0 rgba(210, 255, 0, 0.2);
+  border-left: 3px solid #d2ff00;
+  text-shadow: none;
+}
+body.theme-ln4 .msg-bubble-user::before {
+  display: none;
+}
+body.theme-ln4 .bot-response-text {
+  background: rgba(14, 18, 5, 0.92);
+  border: 1px solid rgba(210, 255, 0, 0.22);
+  color: #f4f4f5;
+  box-shadow: 0 6px 25px rgba(0, 0, 0, 0.5);
+}
+body.theme-ln4 .bot-response-text pre {
+  background: #070902;
+  border-color: rgba(210, 255, 0, 0.25);
+  color: #d2ff00;
+}
+body.theme-ln4 .bot-response-text code {
+  background: rgba(210, 255, 0, 0.12);
+  border-color: rgba(210, 255, 0, 0.3);
+  color: #d2ff00;
+}
+body.theme-ln4 .bot-response-text h1,
+body.theme-ln4 .bot-response-text h2,
+body.theme-ln4 .bot-response-text h3 {
+  color: #d2ff00;
+}
+body.theme-ln4 .bot-response-text blockquote {
+  border-left-color: #d2ff00;
+  background: rgba(210, 255, 0, 0.08);
+  color: #ffffff;
+}
+
+/* LN4 Jev Task Box */
+body.theme-ln4 .ag-task-box {
+  background: rgba(18, 23, 6, 0.9);
+  border: 1px solid rgba(210, 255, 0, 0.3);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+body.theme-ln4 .ag-task-header {
+  background: rgba(24, 31, 8, 0.9);
+  border-bottom-color: rgba(210, 255, 0, 0.2);
+}
+body.theme-ln4 .task-title {
+  color: #ffffff;
+}
+body.theme-ln4 .task-badge-pill {
+  background: rgba(210, 255, 0, 0.15);
+  border-color: #d2ff00;
+  color: #d2ff00;
+  font-family: var(--font-mono);
+}
+body.theme-ln4 .task-spinner {
+  border-top-color: #d2ff00;
+}
+
+/* LN4 Input Dock */
+body.theme-ln4 .input-card-container {
+  background: rgba(14, 18, 5, 0.94);
+  border: 1px solid rgba(210, 255, 0, 0.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6), 0 0 20px rgba(210, 255, 0, 0.08);
+}
+body.theme-ln4 .input-card-container:focus-within {
+  border-color: #d2ff00;
+  box-shadow: 0 0 25px rgba(210, 255, 0, 0.35);
+}
+body.theme-ln4 #promptInput {
+  color: #ffffff;
+}
+body.theme-ln4 #promptInput::placeholder {
+  color: #637354;
+}
+body.theme-ln4 .model-select-pill,
+body.theme-ln4 .verbosity-select-pill {
+  background: rgba(22, 28, 7, 0.85);
+  border-color: rgba(210, 255, 0, 0.25);
+  color: #d2ff00;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+body.theme-ln4 .btn-dock-send {
+  background: #d2ff00;
+  border-color: #d2ff00;
+  box-shadow: 0 0 16px rgba(210, 255, 0, 0.5);
+}
+body.theme-ln4 .send-arrow-icon {
+  color: #0c0f04;
+}
+
+/* LN4 Benchmark Performance Lab */
+body.theme-ln4 .benchmark-hero-banner {
+  background: rgba(14, 18, 5, 0.92);
+  border: 1px solid rgba(210, 255, 0, 0.25);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.7);
+}
+body.theme-ln4 .bench-title {
+  color: #ffffff;
+}
+body.theme-ln4 .bench-subtitle {
+  color: #849673;
+}
+body.theme-ln4 .bench-pulse-tag {
+  background: rgba(210, 255, 0, 0.15);
+  border-color: #d2ff00;
+  color: #d2ff00;
+  font-family: var(--font-mono);
+}
+body.theme-ln4 .bench-pulse-dot {
+  background: #d2ff00;
+  box-shadow: 0 0 10px #d2ff00;
+}
+body.theme-ln4 .bench-preset-chip {
+  background: rgba(20, 26, 7, 0.85);
+  border-color: rgba(210, 255, 0, 0.3);
+  color: #d2ff00;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+body.theme-ln4 .bench-preset-chip:hover {
+  background: #d2ff00;
+  color: #0c0f04;
+  border-color: #d2ff00;
+  box-shadow: 0 0 14px rgba(210, 255, 0, 0.4);
+}
+body.theme-ln4 .bench-input {
+  background: #080a02;
+  border-color: rgba(210, 255, 0, 0.35);
+  color: #ffffff;
+}
+body.theme-ln4 .bench-input:focus {
+  border-color: #d2ff00;
+  box-shadow: 0 0 15px rgba(210, 255, 0, 0.3);
+}
+body.theme-ln4 .btn-bench-run {
+  background: #d2ff00;
+  border-color: #d2ff00;
+  color: #0c0f04;
+  font-weight: 900;
+  box-shadow: 0 0 22px rgba(210, 255, 0, 0.5);
+  font-family: var(--font-sans);
+}
+body.theme-ln4 .bench-card {
+  background: rgba(14, 18, 5, 0.92);
+  border-color: rgba(210, 255, 0, 0.25);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.6);
+}
+body.theme-ln4 .bench-card-name {
+  color: #ffffff;
+}
+body.theme-ln4 .bench-card-tag {
+  color: #849673;
+}
+body.theme-ln4 .bench-metrics-row,
+body.theme-ln4 .bench-tokens-row {
+  background: #080a02;
+  border-color: rgba(210, 255, 0, 0.2);
+}
+body.theme-ln4 .metric-label,
+body.theme-ln4 .token-label {
+  color: #849673;
+  font-family: var(--font-mono);
+}
+body.theme-ln4 .metric-value,
+body.theme-ln4 .token-value {
+  color: #ffffff;
+}
+body.theme-ln4 .metric-value.highlight,
+body.theme-ln4 .token-value.highlight-token {
+  color: #d2ff00;
+}
+body.theme-ln4 .bench-layers-box {
+  background: rgba(10, 13, 3, 0.95);
+  border-color: rgba(210, 255, 0, 0.25);
+}
+body.theme-ln4 .bench-layers-header {
+  color: #849673;
+}
+body.theme-ln4 .layers-total {
+  color: #d2ff00;
+}
+body.theme-ln4 .bench-layer-item {
+  background: #121705;
+  border-color: rgba(210, 255, 0, 0.15);
+}
+body.theme-ln4 .layer-name {
+  color: #ffffff;
+}
+body.theme-ln4 .layer-desc {
+  color: #849673;
+}
+body.theme-ln4 .layer-time {
+  color: #d2ff00;
+}
+body.theme-ln4 .bench-layer-bar {
+  background: #080a02;
+}
+body.theme-ln4 .bench-jev-box {
+  background: rgba(210, 255, 0, 0.08);
+  border-color: rgba(210, 255, 0, 0.35);
+  color: #ffffff;
+}
+body.theme-ln4 .bench-jev-meta {
+  color: #9cb58a;
+}
+body.theme-ln4 .bench-output {
+  background: #080a02;
+  border-color: rgba(210, 255, 0, 0.2);
+  color: #f4f4f5;
+}
+body.theme-ln4 .bench-output h1,
+body.theme-ln4 .bench-output h2,
+body.theme-ln4 .bench-output h3 {
+  color: #d2ff00;
+}
+body.theme-ln4 .bench-verdict-card {
+  background: rgba(210, 255, 0, 0.08);
+  border-color: #d2ff00;
+  box-shadow: 0 0 25px rgba(210, 255, 0, 0.15);
+}
+body.theme-ln4 .verdict-title {
+  color: #d2ff00;
+}
+body.theme-ln4 .verdict-text {
+  color: #e4e4e7;
+}
+
+/* LN4 Drawer & Settings */
+body.theme-ln4 .drawer-card {
+  background: #0a0d03;
+  border-left-color: rgba(210, 255, 0, 0.3);
+  box-shadow: -10px 0 50px rgba(0, 0, 0, 0.85);
+}
+body.theme-ln4 .drawer-header {
+  background: #111604;
+  border-bottom-color: rgba(210, 255, 0, 0.25);
+}
+body.theme-ln4 .header-title {
+  color: #d2ff00;
+}
+body.theme-ln4 .config-section {
+  background: #0e1305;
+  border-color: rgba(210, 255, 0, 0.2);
+}
+body.theme-ln4 .config-section h4 {
+  color: #ffffff;
+}
+body.theme-ln4 .section-desc {
+  color: #849673;
+}
+body.theme-ln4 .ag-select,
+body.theme-ln4 .ag-input {
+  background: #070902;
+  border-color: rgba(210, 255, 0, 0.3);
+  color: #ffffff;
+}
+body.theme-ln4 .ag-select:focus,
+body.theme-ln4 .ag-input:focus {
+  border-color: #d2ff00;
+  box-shadow: 0 0 10px rgba(210, 255, 0, 0.3);
+}
+body.theme-ln4 .chip-model {
+  background: #121705;
+  border-color: rgba(210, 255, 0, 0.2);
+  color: #9cb58a;
+}
+body.theme-ln4 .chip-model:hover {
+  color: #d2ff00;
+  border-color: #d2ff00;
+}
+body.theme-ln4 .chip-model.active {
+  background: #d2ff00;
+  color: #0c0f04;
+  border-color: #d2ff00;
+  font-weight: 800;
+}
+body.theme-ln4 .btn-save-primary {
+  background: #d2ff00;
+  color: #0c0f04;
+  border-color: #d2ff00;
+  font-weight: 800;
+  box-shadow: 0 0 20px rgba(210, 255, 0, 0.4);
+}
+
 @media (max-width: 1150px) {
   .bench-arena {
     grid-template-columns: 1fr;

@@ -53,6 +53,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const cfgJevProvider = document.getElementById('cfgJevProvider');
   const cfgJevKey = document.getElementById('cfgJevKey');
   const cfgVerbosity = document.getElementById('cfgVerbosity');
+  const cfgThemeSelect = document.getElementById('cfgThemeSelect');
   const btnDockVerbosity = document.getElementById('btnDockVerbosity');
   const dockVerbosityIcon = document.getElementById('dockVerbosityIcon');
   const dockVerbosityLabel = document.getElementById('dockVerbosityLabel');
@@ -1007,41 +1008,68 @@ document.addEventListener('DOMContentLoaded', () => {
     return html;
   }
 
-  // Theme Switcher: Dark Frutiger Aero vs Light Frutiger Aero
-  function updateThemeUI(isDark) {
-    if (isDark) {
+  // Theme Switcher: Light Aero vs Dark Aero vs LN4 Racing (Lando Norris)
+  const themes = [
+    { id: 'light-aero', name: 'Light Aero', icon: '☀️' },
+    { id: 'dark-aero', name: 'Dark Aero', icon: '🌙' },
+    { id: 'theme-ln4', name: 'LN4 Racing', icon: '⚡' }
+  ];
+  let currentTheme = 'light-aero';
+
+  function setTheme(themeId) {
+    const valid = themes.find(t => t.id === themeId);
+    currentTheme = valid ? valid.id : 'light-aero';
+
+    document.body.classList.remove('dark-aero', 'theme-ln4');
+    if (currentTheme === 'dark-aero') {
       document.body.classList.add('dark-aero');
-      if (themeIcon) themeIcon.textContent = '☀️';
-      if (themeLabel) themeLabel.textContent = 'Light Aero';
-      if (btnThemeToggle) btnThemeToggle.title = 'Mudar para Light Aero';
-    } else {
-      document.body.classList.remove('dark-aero');
-      if (themeIcon) themeIcon.textContent = '🌙';
-      if (themeLabel) themeLabel.textContent = 'Dark Aero';
-      if (btnThemeToggle) btnThemeToggle.title = 'Mudar para Dark Aero';
+    } else if (currentTheme === 'theme-ln4') {
+      document.body.classList.add('theme-ln4');
+    }
+
+    const cur = themes.find(t => t.id === currentTheme);
+    const nextIndex = (themes.findIndex(t => t.id === currentTheme) + 1) % themes.length;
+    const next = themes[nextIndex];
+
+    if (themeIcon) themeIcon.textContent = cur.icon;
+    if (themeLabel) themeLabel.textContent = cur.name;
+    if (btnThemeToggle) btnThemeToggle.title = `${cur.name} ativo. Clique para: ${next.name} (${next.icon})`;
+
+    if (cfgThemeSelect) cfgThemeSelect.value = currentTheme;
+
+    try {
+      localStorage.setItem('jeff_theme_mode', currentTheme);
+    } catch (e) {
+      console.warn('Falha ao salvar tema no localStorage:', e);
     }
   }
 
   function initTheme() {
     const saved = localStorage.getItem('jeff_theme_mode');
     if (saved) {
-      updateThemeUI(saved === 'dark-aero');
+      if (saved === 'dark-aero' || saved === 'true') {
+        setTheme('dark-aero');
+      } else if (saved === 'theme-ln4' || saved === 'ln4') {
+        setTheme('theme-ln4');
+      } else {
+        setTheme('light-aero');
+      }
     } else {
-      // Default to Light Aero for classic Frutiger Aero experience
-      updateThemeUI(false);
+      setTheme('light-aero');
     }
   }
 
   if (btnThemeToggle) {
     btnThemeToggle.addEventListener('click', () => {
-      const isCurrentlyDark = document.body.classList.contains('dark-aero');
-      const nextDark = !isCurrentlyDark;
-      updateThemeUI(nextDark);
-      try {
-        localStorage.setItem('jeff_theme_mode', nextDark ? 'dark-aero' : 'light-aero');
-      } catch (e) {
-        console.warn('Falha ao salvar tema no localStorage:', e);
-      }
+      const idx = themes.findIndex(t => t.id === currentTheme);
+      const nextTheme = themes[(idx + 1) % themes.length].id;
+      setTheme(nextTheme);
+    });
+  }
+
+  if (cfgThemeSelect) {
+    cfgThemeSelect.addEventListener('change', () => {
+      setTheme(cfgThemeSelect.value);
     });
   }
 
