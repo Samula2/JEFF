@@ -1446,7 +1446,7 @@ export class JevDualEngine implements INodeType {
 		icon: 'file:jevDualEngine.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: '={{$parameter["provider"] === "gemini" ? ($parameter["geminiModelCustom"] || $parameter["geminiModel"]) : ($parameter["openaiModelCustom"] || $parameter["openaiModel"] || "llama3")}}',
+		subtitle: '={{$parameter["provider"] === "gemini" ? ($parameter["geminiModelCustom"] || $parameter["geminiModel"] || "gemini-2.5-flash") : ($parameter["openaiModel"] || $parameter["openaiModelCustom"] || $parameter["model"] || "google/gemma-4-26b-a4b")}}',
 		description: 'Universal Chat Model com Raciocínio Deliberado Jev (System 1 sub-30ms), suporte nativo a Google Gemini e APIs Compatíveis com OpenAI / LLMs Locais (Ollama, LM Studio, DeepSeek, OpenRouter)',
 		defaults: {
 			name: 'Jev Dual-Engine Model',
@@ -1470,20 +1470,20 @@ export class JevDualEngine implements INodeType {
 		outputNames: ['Model'],
 		credentials: [
 			{
-				name: 'googleGeminiApi',
-				required: false,
-				displayOptions: {
-					show: {
-						provider: ['gemini'],
-					},
-				},
-			},
-			{
 				name: 'openAiCompatibleApi',
 				required: false,
 				displayOptions: {
 					show: {
 						provider: ['openai_compatible'],
+					},
+				},
+			},
+			{
+				name: 'googleGeminiApi',
+				required: false,
+				displayOptions: {
+					show: {
+						provider: ['gemini'],
 					},
 				},
 			},
@@ -1648,17 +1648,17 @@ export class JevDualEngine implements INodeType {
 				type: 'options',
 				options: [
 					{
+						name: 'OpenAI Compatible / Local LLM / Ollama / Mac mini / DeepSeek',
+						value: 'openai_compatible',
+						description: 'Qualquer endpoint HTTP compatível (Mac mini, Ollama, LM Studio, vLLM, DeepSeek, OpenRouter)',
+					},
+					{
 						name: 'Google Gemini Oficial (SDK Nativo / AI Studio)',
 						value: 'gemini',
 						description: 'Google Gemini 2.5 Flash, 3.5 Flash, 3.1 Pro com controle de Thinking e Schemas',
 					},
-					{
-						name: 'OpenAI Compatible / Local LLM / DeepSeek / Ollama / Mac mini',
-						value: 'openai_compatible',
-						description: 'Qualquer endpoint HTTP compatível (Ollama, LM Studio, vLLM, DeepSeek, OpenRouter)',
-					},
 				],
-				default: 'gemini',
+				default: 'openai_compatible',
 				description: 'Selecione o provedor de inteligência artificial',
 			},
 
@@ -1790,22 +1790,11 @@ export class JevDualEngine implements INodeType {
 			{
 				displayName: 'Model Name / ID',
 				name: 'openaiModel',
-				type: 'options',
-				typeOptions: {
-					loadOptionsMethod: 'getOpenAiModels',
-				},
-				displayOptions: { show: { provider: ['openai_compatible'] } },
-				default: 'llama3',
-				description: 'Modelo carregado dinamicamente do endpoint local ou remoto',
-			},
-			{
-				displayName: 'Custom Model ID (Override)',
-				name: 'openaiModelCustom',
 				type: 'string',
 				displayOptions: { show: { provider: ['openai_compatible'] } },
-				default: '',
-				placeholder: 'ex: google/gemma-4-26b-a4b, deepseek-r1:70b, gpt-4o, llama3:8b',
-				description: 'Sobrescreve o modelo com qualquer string livre (essencial para Mac mini, Ollama e LM Studio)',
+				default: 'google/gemma-4-26b-a4b',
+				placeholder: 'ex: google/gemma-4-26b-a4b, llama3:8b, deepseek-r1:70b, gpt-4o',
+				description: 'Nome ou ID do modelo na API local ou remota (Mac mini, Ollama, LM Studio, DeepSeek, OpenRouter)',
 			},
 			{
 				displayName: 'Opções OpenAI / Local LLM',
@@ -1933,80 +1922,13 @@ export class JevDualEngine implements INodeType {
 				} catch {}
 				return defaultModels;
 			},
-
-			async getOpenAiModels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-				let baseUrl = 'http://localhost:11434/v1';
-				let apiKey = 'not-needed';
-				try {
-					const creds = await this.getCredentials('openAiCompatibleApi');
-					if (creds && typeof creds.baseUrl === 'string' && creds.baseUrl.trim()) {
-						baseUrl = creds.baseUrl.trim();
-					}
-					if (creds && typeof creds.apiKey === 'string' && creds.apiKey.trim()) {
-						apiKey = creds.apiKey.trim();
-					}
-				} catch {}
-				if (baseUrl === 'http://localhost:11434/v1' && apiKey === 'not-needed') {
-					try {
-						const creds = await this.getCredentials('jevLlmApi');
-						if (creds && typeof creds.customBaseUrl === 'string' && creds.customBaseUrl.trim()) {
-							baseUrl = creds.customBaseUrl.trim();
-						}
-						if (creds && typeof creds.customApiKey === 'string' && creds.customApiKey.trim()) {
-							apiKey = creds.customApiKey.trim();
-						} else if (creds && typeof creds.apiKey === 'string' && creds.apiKey.trim()) {
-							apiKey = creds.apiKey.trim();
-						}
-					} catch {}
-				}
-
-				baseUrl = baseUrl.replace(/\/+$/, '');
-				const defaultModels: INodePropertyOptions[] = [
-					{ name: 'llama3', value: 'llama3' },
-					{ name: 'deepseek-r1', value: 'deepseek-r1' },
-					{ name: 'google/gemma-4-26b-a4b', value: 'google/gemma-4-26b-a4b' },
-					{ name: 'qwen2.5', value: 'qwen2.5' },
-					{ name: 'gpt-4o', value: 'gpt-4o' },
-					{ name: 'claude-3-5-sonnet', value: 'claude-3-5-sonnet' },
-				];
-
-				const headers: Record<string, string> = {};
-				if (apiKey && apiKey !== 'not-needed') {
-					headers['Authorization'] = `Bearer ${apiKey}`;
-				}
-
-				try {
-					const modelsUrl = baseUrl.endsWith('/v1') ? `${baseUrl}/models` : `${baseUrl}/v1/models`;
-					const response = await this.helpers.httpRequest({ method: 'GET', url: modelsUrl, headers, json: true });
-					const rawList = response?.data || response?.models || (Array.isArray(response) ? response : null);
-					if (Array.isArray(rawList) && rawList.length > 0) {
-						return rawList.map((m: any) => {
-							const modelId = typeof m === 'string' ? m : (m.id || m.name || JSON.stringify(m));
-							return { name: String(modelId), value: String(modelId) };
-						});
-					}
-				} catch {
-					try {
-						const rootUrl = baseUrl.replace(/\/v1$/, '');
-						const ollamaResp = await this.helpers.httpRequest({ method: 'GET', url: `${rootUrl}/api/tags`, headers, json: true });
-						if (ollamaResp && Array.isArray(ollamaResp.models) && ollamaResp.models.length > 0) {
-							return ollamaResp.models.map((m: any) => {
-								const name = m.name || m.model || JSON.stringify(m);
-								return { name: String(name), value: String(name) };
-							});
-						}
-					} catch {}
-				}
-
-				return defaultModels;
-			},
 		},
 	};
 
 	async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
 		const executionSettings = getModelExecutionSettings(this, itemIndex);
 		const executionItemIndex = executionSettings.executeOnce ? 0 : itemIndex;
-		const provider = this.getNodeParameter('provider', executionItemIndex, 'gemini') as 'gemini' | 'openai_compatible';
+		const provider = this.getNodeParameter('provider', executionItemIndex, 'openai_compatible') as 'gemini' | 'openai_compatible';
 
 		// Jev Dual-Engine specific settings
 		const enableSandwich = this.getNodeParameter('enableSandwich', executionItemIndex, true) as boolean;
@@ -2137,21 +2059,42 @@ export class JevDualEngine implements INodeType {
 			if (baseUrl === 'http://localhost:11434/v1' && openaiApiKey === 'not-needed') {
 				try {
 					const creds = await this.getCredentials('jevLlmApi');
-					if (creds && typeof creds.customBaseUrl === 'string' && creds.customBaseUrl.trim()) {
-						baseUrl = creds.customBaseUrl.trim();
-					}
-					if (creds && typeof creds.customApiKey === 'string' && creds.customApiKey.trim()) {
-						openaiApiKey = creds.customApiKey.trim();
-					} else if (creds && typeof creds.apiKey === 'string' && creds.apiKey.trim()) {
-						openaiApiKey = creds.apiKey.trim();
+					if (creds) {
+						if (creds.provider === 'openrouter') {
+							baseUrl = 'https://openrouter.ai/api/v1';
+						} else if (creds.provider === 'deepinfra') {
+							baseUrl = 'https://api.deepinfra.com/v1/openai';
+						} else if (creds.provider === 'openai') {
+							baseUrl = 'https://api.openai.com/v1';
+						}
+						if (typeof creds.customBaseUrl === 'string' && creds.customBaseUrl.trim()) {
+							baseUrl = creds.customBaseUrl.trim();
+						}
+						if (typeof creds.customApiKey === 'string' && creds.customApiKey.trim()) {
+							openaiApiKey = creds.customApiKey.trim();
+						} else if (typeof creds.apiKey === 'string' && creds.apiKey.trim()) {
+							openaiApiKey = creds.apiKey.trim();
+						}
 					}
 				} catch {}
 			}
 			baseUrl = baseUrl.replace(/\/+$/, '');
 
-			let openaiModel = this.getNodeParameter('openaiModel', executionItemIndex, 'llama3') as string;
-			const customModel = this.getNodeParameter('openaiModelCustom', executionItemIndex, '') as string;
-			if (customModel.trim()) openaiModel = customModel.trim();
+			let openaiModel = 'google/gemma-4-26b-a4b';
+			try {
+				const pModel = this.getNodeParameter('openaiModel', executionItemIndex, '') as string;
+				if (pModel && pModel.trim()) openaiModel = pModel.trim();
+			} catch {}
+			if (openaiModel === 'google/gemma-4-26b-a4b') {
+				try {
+					const legModel = this.getNodeParameter('model', executionItemIndex, '') as string;
+					if (legModel && legModel.trim()) openaiModel = legModel.trim();
+				} catch {}
+			}
+			try {
+				const customModel = this.getNodeParameter('openaiModelCustom', executionItemIndex, '') as string;
+				if (customModel && customModel.trim()) openaiModel = customModel.trim();
+			} catch {}
 
 			const opts = this.getNodeParameter('openaiOptions', executionItemIndex, {}) as Record<string, any>;
 			const sharedOptions = resolveSharedModelOptions(this, opts);
