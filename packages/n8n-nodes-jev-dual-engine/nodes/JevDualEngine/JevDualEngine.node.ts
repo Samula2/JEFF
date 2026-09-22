@@ -7,8 +7,8 @@ import {
 	SupplyData,
 } from 'n8n-workflow';
 import { ChatOpenAI } from '@langchain/openai';
-import { BaseMessage, SystemMessage } from '@langchain/core/messages';
-import { ChatResult } from '@langchain/core/outputs';
+import { BaseMessage, SystemMessage, AIMessageChunk } from '@langchain/core/messages';
+import { ChatResult, ChatGenerationChunk } from '@langchain/core/outputs';
 
 export interface JevSimulationResult {
 	intent: string;
@@ -302,6 +302,74 @@ export interface JevConfig {
 	verbosity?: 'concise' | 'balanced' | 'detailed';
 	enableSandwich?: boolean;
 	cleanMath?: boolean;
+	showTokenStats?: boolean;
+}
+
+export interface TokenUsageReport {
+	jevS1: {
+		promptTokens: number;
+		completionTokens: number;
+		totalTokens: number;
+		latencyMs: number;
+	};
+	llmS2: {
+		promptTokens: number;
+		completionTokens: number;
+		totalTokens: number;
+	};
+	totalTokens: number;
+}
+
+export function computeTokenReport(params: {
+	promptText: string;
+	sandwichContract: string;
+	jevDecision: JevSimulationResult | null;
+	enrichedPromptLength: number;
+	outputContent: string;
+	apiUsage?: {
+		promptTokens?: number;
+		completionTokens?: number;
+		totalTokens?: number;
+	};
+}): TokenUsageReport {
+	const jevPromptTokens = params.jevDecision && params.promptText
+		? Math.max(1, Math.round(params.promptText.length / 3.8))
+		: 0;
+	const jevCompletionTokens = params.jevDecision && params.sandwichContract
+		? Math.max(1, Math.round(params.sandwichContract.length / 3.8))
+		: 0;
+	const jevTotal = jevPromptTokens + jevCompletionTokens;
+
+	const hasApiPrompt = typeof params.apiUsage?.promptTokens === 'number' && params.apiUsage.promptTokens > 0;
+	const hasApiCompletion = typeof params.apiUsage?.completionTokens === 'number' && params.apiUsage.completionTokens > 0;
+	const hasApiTotal = typeof params.apiUsage?.totalTokens === 'number' && params.apiUsage.totalTokens > 0;
+
+	const llmPromptTokens = hasApiPrompt
+		? params.apiUsage!.promptTokens!
+		: Math.max(1, Math.round((params.enrichedPromptLength || 0) / 3.8));
+
+	const llmCompletionTokens = hasApiCompletion
+		? params.apiUsage!.completionTokens!
+		: (params.outputContent ? Math.max(1, Math.round(params.outputContent.length / 3.8)) : 0);
+
+	const llmTotal = hasApiTotal
+		? params.apiUsage!.totalTokens!
+		: llmPromptTokens + llmCompletionTokens;
+
+	return {
+		jevS1: {
+			promptTokens: jevPromptTokens,
+			completionTokens: jevCompletionTokens,
+			totalTokens: jevTotal,
+			latencyMs: params.jevDecision?.latency_s1_ms ?? 12,
+		},
+		llmS2: {
+			promptTokens: llmPromptTokens,
+			completionTokens: llmCompletionTokens,
+			totalTokens: llmTotal,
+		},
+		totalTokens: jevTotal + llmTotal,
+	};
 }
 
 export class JevChatModel extends ChatOpenAI {
@@ -323,9 +391,30 @@ export class JevChatModel extends ChatOpenAI {
 		return newModel as this;
 	}
 
-	enrichMessagesWithJev(messages: BaseMessage[]): BaseMessage[] {
+	enrichMessagesWithJev(messages: BaseMessage[]): {
+		enrichedMessages: BaseMessage[];
+		promptText: string;
+		sandwichContract: string;
+		jevDecision: JevSimulationResult | null;
+		enrichedPromptLength: number;
+	} {
+		const calcLen = (msgs: BaseMessage[]) =>
+			msgs.reduce((acc, m) => {
+				if (typeof m.content === 'string') return acc + m.content.length;
+				if (Array.isArray(m.content)) {
+					return acc + m.content.reduce((inner: number, c: any) => inner + (typeof c === 'string' ? c.length : c?.text?.length || 0), 0);
+				}
+				return acc;
+			}, 0);
+
 		if (this.jevConfig.enableSandwich === false || !messages || messages.length === 0) {
-			return messages;
+			return {
+				enrichedMessages: messages,
+				promptText: '',
+				sandwichContract: '',
+				jevDecision: null,
+				enrichedPromptLength: calcLen(messages || []),
+			};
 		}
 
 		// Identifica a mensagem humana mais recente
@@ -342,7 +431,13 @@ export class JevChatModel extends ChatOpenAI {
 		}
 
 		if (!promptText.trim()) {
-			return messages;
+			return {
+				enrichedMessages: messages,
+				promptText: '',
+				sandwichContract: '',
+				jevDecision: null,
+				enrichedPromptLength: calcLen(messages),
+			};
 		}
 
 		// Raciocínio Deliberado System 1 (<30ms)
@@ -414,35 +509,109 @@ DIRETRIZ DE EXECUÇÃO:
 			enriched.unshift(new SystemMessage(sandwichContract));
 		}
 
-		return enriched;
+		return {
+			enrichedMessages: enriched,
+			promptText,
+			sandwichContract,
+			jevDecision,
+			enrichedPromptLength: calcLen(enriched),
+		};
 	}
 
 	// @ts-ignore
 	override async _generate(messages: BaseMessage[], options: any, runManager?: any): Promise<ChatResult> {
-		const enrichedMessages = this.enrichMessagesWithJev(messages);
+		const { enrichedMessages, promptText, sandwichContract, jevDecision, enrichedPromptLength } = this.enrichMessagesWithJev(messages);
 		const result = await super._generate(enrichedMessages, options, runManager);
-		if (this.jevConfig.cleanMath !== false && result?.generations) {
+
+		if (result?.generations) {
 			for (const gen of result.generations) {
-				if (typeof gen.text === 'string') {
-					gen.text = cleanLatexText(gen.text);
+				if (this.jevConfig.cleanMath !== false) {
+					if (typeof gen.text === 'string') {
+						gen.text = cleanLatexText(gen.text);
+					}
+					if (gen.message && typeof gen.message.content === 'string') {
+						gen.message.content = cleanLatexText(gen.message.content);
+					}
 				}
-				if (gen.message && typeof gen.message.content === 'string') {
-					gen.message.content = cleanLatexText(gen.message.content);
+
+				const outputContent = typeof gen.message?.content === 'string'
+					? gen.message.content
+					: (gen.text || '');
+
+				const genMsg = gen.message as any;
+				const apiUsage = {
+					promptTokens: genMsg?.usage_metadata?.input_tokens ?? result.llmOutput?.tokenUsage?.promptTokens,
+					completionTokens: genMsg?.usage_metadata?.output_tokens ?? result.llmOutput?.tokenUsage?.completionTokens,
+					totalTokens: genMsg?.usage_metadata?.total_tokens ?? result.llmOutput?.tokenUsage?.totalTokens,
+				};
+
+				const tokenReport = computeTokenReport({
+					promptText,
+					sandwichContract,
+					jevDecision,
+					enrichedPromptLength,
+					outputContent,
+					apiUsage,
+				});
+
+				if (genMsg) {
+					genMsg.usage_metadata = {
+						input_tokens: tokenReport.jevS1.promptTokens + tokenReport.llmS2.promptTokens,
+						output_tokens: tokenReport.jevS1.completionTokens + tokenReport.llmS2.completionTokens,
+						total_tokens: tokenReport.totalTokens,
+					};
+					genMsg.response_metadata = {
+						...(genMsg.response_metadata || {}),
+						tokenUsage: {
+							promptTokens: tokenReport.jevS1.promptTokens + tokenReport.llmS2.promptTokens,
+							completionTokens: tokenReport.jevS1.completionTokens + tokenReport.llmS2.completionTokens,
+							totalTokens: tokenReport.totalTokens,
+						},
+						tokens: {
+							jev_s1: tokenReport.jevS1,
+							llm_s2: tokenReport.llmS2,
+							total: tokenReport.totalTokens,
+						},
+					};
+				}
+
+				if (this.jevConfig.showTokenStats !== false) {
+					const statsFooter = `\n\n---\n\`⚡ Jev S1: ${tokenReport.jevS1.totalTokens} tokens | 🤖 LLM S2: ${tokenReport.llmS2.totalTokens} tokens | Total: ${tokenReport.totalTokens} tokens\``;
+					gen.text = (gen.text || '') + statsFooter;
+					if (gen.message && typeof gen.message.content === 'string') {
+						gen.message.content = gen.message.content + statsFooter;
+					}
 				}
 			}
 		}
+
 		return result;
 	}
 
 	// @ts-ignore
 	override async *_streamResponseChunks(messages: BaseMessage[], options: any, runManager?: any): AsyncGenerator<any, void, unknown> {
-		const enrichedMessages = this.enrichMessagesWithJev(messages);
+		const { enrichedMessages, promptText, sandwichContract, jevDecision, enrichedPromptLength } = this.enrichMessagesWithJev(messages);
 		let buffer = '';
+		let fullOutput = '';
+		let apiUsage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
+
 		for await (const chunk of super._streamResponseChunks(enrichedMessages, options, runManager)) {
+			const usage = (chunk?.message as any)?.usage_metadata;
+			if (usage) {
+				apiUsage = {
+					promptTokens: usage.input_tokens,
+					completionTokens: usage.output_tokens,
+					totalTokens: usage.total_tokens,
+				};
+			}
+
 			if (this.jevConfig.cleanMath === false) {
+				const text = chunk?.text || (typeof chunk?.message?.content === 'string' ? chunk.message.content : '');
+				if (text) fullOutput += text;
 				yield chunk;
 				continue;
 			}
+
 			const text = chunk?.text || (typeof chunk?.message?.content === 'string' ? chunk.message.content : '');
 			if (text) {
 				buffer += text;
@@ -450,15 +619,16 @@ DIRETRIZ DE EXECUÇÃO:
 				if (lastBackslash === -1) {
 					const cleaned = cleanLatexText(buffer);
 					buffer = '';
+					fullOutput += cleaned;
 					if (chunk.text !== undefined) chunk.text = cleaned;
 					if (chunk?.message && typeof chunk.message.content === 'string') chunk.message.content = cleaned;
 					yield chunk;
 				} else {
 					const afterBackslash = buffer.slice(lastBackslash + 1);
-					// Se após a barra houver caractere não-letra (espaço, pontuação, etc.), o comando LaTeX foi finalizado
 					if (/[^a-zA-Z]/.test(afterBackslash)) {
 						const cleaned = cleanLatexText(buffer);
 						buffer = '';
+						fullOutput += cleaned;
 						if (chunk.text !== undefined) chunk.text = cleaned;
 						if (chunk?.message && typeof chunk.message.content === 'string') chunk.message.content = cleaned;
 						yield chunk;
@@ -468,10 +638,52 @@ DIRETRIZ DE EXECUÇÃO:
 				yield chunk;
 			}
 		}
+
 		if (buffer) {
 			const cleaned = cleanLatexText(buffer);
-			yield { text: cleaned, message: { content: cleaned } } as any;
+			fullOutput += cleaned;
+			yield new ChatGenerationChunk({
+				text: cleaned,
+				message: new AIMessageChunk({ content: cleaned }),
+			});
 		}
+
+		const tokenReport = computeTokenReport({
+			promptText,
+			sandwichContract,
+			jevDecision,
+			enrichedPromptLength,
+			outputContent: fullOutput,
+			apiUsage,
+		});
+
+		const statsBadge = this.jevConfig.showTokenStats !== false
+			? `\n\n---\n\`⚡ Jev S1: ${tokenReport.jevS1.totalTokens} tokens | 🤖 LLM S2: ${tokenReport.llmS2.totalTokens} tokens | Total: ${tokenReport.totalTokens} tokens\``
+			: '';
+
+		yield new ChatGenerationChunk({
+			text: statsBadge,
+			message: new AIMessageChunk({
+				content: statsBadge,
+				usage_metadata: {
+					input_tokens: tokenReport.jevS1.promptTokens + tokenReport.llmS2.promptTokens,
+					output_tokens: tokenReport.jevS1.completionTokens + tokenReport.llmS2.completionTokens,
+					total_tokens: tokenReport.totalTokens,
+				},
+				response_metadata: {
+					tokenUsage: {
+						promptTokens: tokenReport.jevS1.promptTokens + tokenReport.llmS2.promptTokens,
+						completionTokens: tokenReport.jevS1.completionTokens + tokenReport.llmS2.completionTokens,
+						totalTokens: tokenReport.totalTokens,
+					},
+					tokens: {
+						jev_s1: tokenReport.jevS1,
+						llm_s2: tokenReport.llmS2,
+						total: tokenReport.totalTokens,
+					},
+				},
+			}),
+		});
 	}
 }
 
@@ -544,6 +756,13 @@ export class JevDualEngine implements INodeType {
 				description: 'Evita caracteres de código LaTeX ($ e \\) que quebram no chat do n8n, convertendo fórmulas para texto puro e símbolos Unicode legíveis (ex: x², ½, ∫, ∇)',
 			},
 			{
+				displayName: 'Exibir Estatísticas de Tokens no Chat',
+				name: 'showTokenStats',
+				type: 'boolean',
+				default: true,
+				description: 'Adiciona no rodapé da resposta do chat um badge com a contagem de tokens do Jev (System 1) e da LLM (System 2)',
+			},
+			{
 				displayName: 'Estilo de Resposta (Verbosidade)',
 				name: 'verbosity',
 				type: 'options',
@@ -605,6 +824,7 @@ export class JevDualEngine implements INodeType {
 		const modelName = this.getNodeParameter('model', itemIndex, 'gemini-2.5-flash') as string;
 		const providerOverride = this.getNodeParameter('providerOverride', itemIndex, 'from_cred') as string;
 		const cleanMath = this.getNodeParameter('cleanMath', itemIndex, true) as boolean;
+		const showTokenStats = this.getNodeParameter('showTokenStats', itemIndex, true) as boolean;
 		const temperature = this.getNodeParameter('temperature', itemIndex, 0.2) as number;
 		const maxTokens = this.getNodeParameter('maxTokens', itemIndex, 4096) as number;
 		const verbosity = this.getNodeParameter('verbosity', itemIndex, 'concise') as 'concise' | 'balanced' | 'detailed';
@@ -666,6 +886,7 @@ export class JevDualEngine implements INodeType {
 				verbosity,
 				enableSandwich,
 				cleanMath,
+				showTokenStats,
 			},
 		);
 
