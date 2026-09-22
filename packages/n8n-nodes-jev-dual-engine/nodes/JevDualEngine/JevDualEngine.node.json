@@ -3,13 +3,10 @@
   "nodeVersion": "1.0",
   "codex": {
     "categories": [
-      "AI",
-      "Development",
-      "Core Nodes"
+      "AI"
     ],
     "subcategories": {
       "AI": [
-        "Reasoning",
         "Language Models"
       ]
     },

@@ -1,12 +1,16 @@
 import {
-	IExecuteFunctions,
-	INodeExecutionData,
 	INodeType,
 	INodeTypeDescription,
+	ISupplyDataFunctions,
+	NodeConnectionTypes,
 	NodeOperationError,
+	SupplyData,
 } from 'n8n-workflow';
+import { ChatOpenAI } from '@langchain/openai';
+import { BaseMessage, SystemMessage } from '@langchain/core/messages';
+import { ChatResult } from '@langchain/core/outputs';
 
-interface JevSimulationResult {
+export interface JevSimulationResult {
 	intent: string;
 	intent_confidence: number;
 	risk_assessment: string;
@@ -100,50 +104,50 @@ export function localJevSimulate(prompt: string): JevSimulationResult {
 			'Tipagem estrita sem o uso de any desnecessário',
 			'Código autocontido e pronto para execução sem dependências ocultas',
 			'Nomes de variáveis intencionais e sem abreviações obscuras',
-			'Tratamento preventivo de edge cases e entradas nulas'
+			'Tratamento preventivo de edge cases e entradas nulas',
 		];
 		executionSteps = [
 			'1. Definir os tipos, interfaces e contratos de dados essenciais',
 			'2. Implementar a lógica central com validação de entrada',
 			'3. Adicionar controle de erros e tratamento de exceções',
-			'4. Apresentar exemplo de consumo funcional'
+			'4. Apresentar exemplo de consumo funcional',
 		];
 	} else if (intent === 'security_critical') {
 		coreDeduction = 'Operação com potencial de risco à integridade de dados ou segurança. O plano deve conter salvaguardas explícitas, idempotência e verificação antes de qualquer mutação.';
 		constraints = [
 			'Princípio do menor privilégio',
 			'Não expor segredos, tokens ou dados sensíveis em logs',
-			'Validação estrita de limites de entrada'
+			'Validação estrita de limites de entrada',
 		];
 		executionSteps = [
 			'1. Avaliar superfície de risco e vetor de ameaça',
 			'2. Estabelecer guardrails de contenção',
 			'3. Executar o procedimento de forma transacional e reversível',
-			'4. Auditar o resultado final'
+			'4. Auditar o resultado final',
 		];
 	} else if (intent === 'architecture_planning') {
 		coreDeduction = 'Demanda planejamento de arquitetura com separação clara de responsabilidades, escalabilidade e desacoplamento de componentes.';
 		constraints = [
 			'Evitar acoplamento prematuro e complexidade acidental (YAGNI)',
 			'Garantir isolamento de domínios',
-			'Definir contratos de comunicação claros'
+			'Definir contratos de comunicação claros',
 		];
 		executionSteps = [
 			'1. Mapear entidades fundamentais e limites de contexto',
 			'2. Desenhar fluxo de dados e interfaces de integração',
 			'3. Identificar potenciais gargalos e pontos únicos de falha',
-			'4. Resumir o plano de evolução por marcos objetivos'
+			'4. Resumir o plano de evolução por marcos objetivos',
 		];
 	} else {
 		coreDeduction = 'Consulta de conhecimento e raciocínio analítico. Exige resposta estruturada, premissas fundamentadas e ausência de preâmbulos genéricos.';
 		constraints = [
 			'Fundamentação objetiva e factual',
-			'Clareza conceitual sem redundâncias'
+			'Clareza conceitual sem redundâncias',
 		];
 		executionSteps = [
 			'1. Isolar premissas centrais da dúvida',
 			'2. Desenvolver a dedução analítica com exemplos práticos',
-			'3. Concluir com recomendações acionáveis'
+			'3. Concluir com recomendações acionáveis',
 		];
 	}
 
@@ -165,47 +169,167 @@ export function localJevSimulate(prompt: string): JevSimulationResult {
 			language: techDomain,
 			paradigm: 'Idiomático & Funcional/Modular',
 			strict_typing: true,
-			error_handling: 'Explicito com Result/Try-Catch'
+			error_handling: 'Explicito com Result/Try-Catch',
 		},
-		latency_s1_ms: latencyS1
+		latency_s1_ms: latencyS1,
 	};
+}
+
+export interface JevConfig {
+	verbosity?: 'concise' | 'balanced' | 'detailed';
+	enableSandwich?: boolean;
+}
+
+export class JevChatModel extends ChatOpenAI {
+	readonly fields: any;
+	readonly jevConfig: JevConfig;
+
+	constructor(fields?: any, jevConfig: JevConfig = {}) {
+		super(fields);
+		this.fields = fields;
+		this.jevConfig = jevConfig;
+	}
+
+	override withConfig(config: any): this {
+		const newModel = new JevChatModel(this.fields, this.jevConfig);
+		newModel.defaultOptions = {
+			...this.defaultOptions,
+			...config,
+		};
+		return newModel as this;
+	}
+
+	enrichMessagesWithJev(messages: BaseMessage[]): BaseMessage[] {
+		if (this.jevConfig.enableSandwich === false || !messages || messages.length === 0) {
+			return messages;
+		}
+
+		// Identifica a mensagem humana mais recente
+		const humanMsgs = messages.filter((m) => m.getType() === 'human');
+		const targetMsg = humanMsgs.length > 0 ? humanMsgs[humanMsgs.length - 1] : messages[messages.length - 1];
+
+		let promptText = '';
+		if (typeof targetMsg?.content === 'string') {
+			promptText = targetMsg.content;
+		} else if (Array.isArray(targetMsg?.content)) {
+			promptText = targetMsg.content
+				.map((c: any) => (typeof c === 'string' ? c : c?.text || ''))
+				.join(' ');
+		}
+
+		if (!promptText.trim()) {
+			return messages;
+		}
+
+		// Raciocínio Deliberado System 1 (<30ms)
+		const jevDecision = localJevSimulate(promptText);
+
+		let verbosityDirective = '';
+		const verbosity = this.jevConfig.verbosity || 'concise';
+		if (verbosity === 'concise') {
+			verbosityDirective = 'DIRETIVA DE CONCISÃO: Responda de forma direta e concisa. Elimine preâmbulos, saudações ou explicações dispensáveis. Foque estritamente na execução da ferramenta ou solução técnica.';
+		} else if (verbosity === 'balanced') {
+			verbosityDirective = 'DIRETIVA DE ESTILO EQUILIBRADO: Responda de forma técnica moderada, combinando o plano deliberado com código e explicações claras.';
+		} else {
+			verbosityDirective = 'DIRETIVA DE ESTILO DETALHADO: Responda de forma aprofundada, didática e conceitual.';
+		}
+
+		const sandwichContract = `[JEV SYSTEM 1 - DELIBERATIVE REASONING CONTRACT]
+DEDUÇÃO LÓGICA DO JEV:
+${jevDecision.core_deduction}
+
+RESTRIÇÕES DETERMINADAS PELO JEV:
+${jevDecision.constraints.map((c) => '- ' + c).join('\n')}
+
+PLANO DE EXECUÇÃO CALCULADO PELO JEV:
+${jevDecision.execution_steps.join('\n')}
+
+DOMÍNIO: ${jevDecision.domain}
+COMPLEXIDADE: ${jevDecision.complexity_label} (Nível ${jevDecision.complexity_score}/5)
+LATÊNCIA ESTIMADA S1: ${jevDecision.latency_s1_ms}ms
+
+${verbosityDirective}
+
+INSTRUÇÃO PARA SYSTEM 2:
+Você está operando como o System 2. Siga rigorosamente a dedução lógica e o plano de etapas do Jev definidos acima em cada resposta ou chamada de ferramenta.`;
+
+		const enriched = [...messages];
+		const sysIndex = enriched.findIndex((m) => m.getType() === 'system');
+
+		if (sysIndex >= 0) {
+			const existingContent = enriched[sysIndex].content;
+			const textContent = typeof existingContent === 'string' ? existingContent : JSON.stringify(existingContent);
+			if (textContent.includes('[JEV SYSTEM 1 - DELIBERATIVE REASONING CONTRACT]')) {
+				const baseContent = textContent.split('[JEV SYSTEM 1 - DELIBERATIVE REASONING CONTRACT]')[0].trim();
+				enriched[sysIndex] = new SystemMessage(baseContent ? `${baseContent}\n\n${sandwichContract}` : sandwichContract);
+			} else {
+				enriched[sysIndex] = new SystemMessage(`${textContent}\n\n${sandwichContract}`);
+			}
+		} else {
+			enriched.unshift(new SystemMessage(sandwichContract));
+		}
+
+		return enriched;
+	}
+
+	// @ts-ignore
+	override async _generate(messages: BaseMessage[], options: any, runManager?: any): Promise<ChatResult> {
+		const enrichedMessages = this.enrichMessagesWithJev(messages);
+		return super._generate(enrichedMessages, options, runManager);
+	}
+
+	// @ts-ignore
+	override async *_streamResponseChunks(messages: BaseMessage[], options: any, runManager?: any): AsyncGenerator<any, void, unknown> {
+		const enrichedMessages = this.enrichMessagesWithJev(messages);
+		yield* super._streamResponseChunks(enrichedMessages, options, runManager);
+	}
 }
 
 export class JevDualEngine implements INodeType {
 	description: INodeTypeDescription = {
-		displayName: 'Jev Dual-Engine AI',
+		displayName: 'Jev Dual-Engine Model',
 		name: 'jevDualEngine',
 		icon: 'file:jevDualEngine.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: '={{$parameter["model"] || "Gemini"}}',
-		description: 'Arquitetura Sandwich: Raciocínio deliberado sub-30ms (System 1) + Tradução generativa (System 2)',
+		subtitle: '={{$parameter["model"] || "gemini-2.5-flash"}}',
+		description: 'Language Model com Raciocínio Deliberado Jev (System 1 sub-30ms) para AI Agents e Chains',
 		defaults: {
-			name: 'Jev Dual-Engine',
+			name: 'Jev Dual-Engine Model',
 		},
-		inputs: ['main'],
-		outputs: ['main'],
+		codex: {
+			categories: ['AI'],
+			subcategories: {
+				AI: ['Language Models'],
+			},
+			resources: {
+				primaryDocumentation: [
+					{
+						url: 'https://github.com/Samula2/JEFF',
+					},
+				],
+			},
+		},
+		inputs: [],
+		outputs: [NodeConnectionTypes.AiLanguageModel],
+		outputNames: ['Model'],
 		credentials: [
 			{
-				name: 'jevApi',
-				required: false,
+				name: 'jevLlmApi',
+				required: true,
 			},
 			{
-				name: 'jevLlmApi',
+				name: 'jevApi',
 				required: false,
 			},
 		],
 		properties: [
 			{
-				displayName: 'Prompt / Pergunta',
-				name: 'prompt',
+				displayName: 'Modelo da LLM',
+				name: 'model',
 				type: 'string',
-				typeOptions: {
-					rows: 3,
-				},
-				default: '={{ $json.chatInput || $json.text || $json.body?.prompt || "" }}',
-				required: true,
-				description: 'Texto de entrada a ser processado pelo Jev System 1 e traduzido pela LLM System 2',
+				default: 'gemini-2.5-flash',
+				description: 'Nome do modelo a ser chamado (ex: gemini-2.5-flash, gemini-2.5-pro, gpt-4o, meta-llama/Meta-Llama-3.1-70B-Instruct)',
 			},
 			{
 				displayName: 'Provedor da LLM (Override)',
@@ -213,20 +337,14 @@ export class JevDualEngine implements INodeType {
 				type: 'options',
 				options: [
 					{ name: 'Usar Provedor das Credenciais', value: 'from_cred' },
-					{ name: 'Google Gemini', value: 'gemini' },
-					{ name: 'DeepInfra (Llama / Qwen / DeepSeek)', value: 'deepinfra' },
+					{ name: 'Google Gemini Oficial (OpenAI Endpoint)', value: 'gemini' },
+					{ name: 'DeepInfra (Llama 3.1 / DeepSeek / Qwen)', value: 'deepinfra' },
 					{ name: 'OpenRouter', value: 'openrouter' },
 					{ name: 'OpenAI Oficial', value: 'openai' },
+					{ name: 'Custom Endpoint / Ollama Local', value: 'custom' },
 				],
 				default: 'from_cred',
-				description: 'Permite sobrescrever o provedor da credencial diretamente no nó',
-			},
-			{
-				displayName: 'Modelo da LLM',
-				name: 'model',
-				type: 'string',
-				default: 'gemini-2.5-flash',
-				description: 'Nome do modelo a ser chamado (ex: gemini-2.5-flash, gemini-2.5-pro, meta-llama/Meta-Llama-3.1-70B-Instruct, gpt-4o)',
+				description: 'Permite sobrescrever o provedor configurado nas credenciais',
 			},
 			{
 				displayName: 'Estilo de Resposta (Verbosidade)',
@@ -247,14 +365,7 @@ export class JevDualEngine implements INodeType {
 					},
 				],
 				default: 'concise',
-				description: 'Controla a extensão e nível de detalhamento da resposta',
-			},
-			{
-				displayName: 'Incluir Pensamentos do Jev na Saída (Thoughts)',
-				name: 'includeThoughts',
-				type: 'boolean',
-				default: true,
-				description: 'Se ativo, adiciona json.thoughts com deduções, passos do plano e métricas de latência calculadas pelo Jev',
+				description: 'Controla a extensão e o direcionamento da síntese da resposta',
 			},
 			{
 				displayName: 'Temperatura',
@@ -268,209 +379,82 @@ export class JevDualEngine implements INodeType {
 				default: 0.2,
 				description: 'Valores menores geram respostas mais determinísticas e focadas',
 			},
+			{
+				displayName: 'Máximo de Tokens de Saída',
+				name: 'maxTokens',
+				type: 'number',
+				default: 4096,
+				description: 'Limite máximo de tokens gerados pela LLM',
+			},
+			{
+				displayName: 'Ativar Raciocínio Sandwich (System 1)',
+				name: 'enableSandwich',
+				type: 'boolean',
+				default: true,
+				description: 'Se ativo, o Jev executa dedução lógica deliberada sub-30ms antes de delegar para a LLM',
+			},
 		],
 	};
 
-	async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
-		const items = this.getInputData();
-		const returnData: INodeExecutionData[] = [];
-
-		// Carrega credenciais opcionais
-		let jevCreds: any = {};
+	async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
 		let llmCreds: any = {};
 		try {
-			jevCreds = await this.getCredentials('jevApi');
-		} catch {}
-		try {
 			llmCreds = await this.getCredentials('jevLlmApi');
-		} catch {}
-
-		for (let i = 0; i < items.length; i++) {
-			const prompt = this.getNodeParameter('prompt', i, '') as string;
-			const providerOverride = this.getNodeParameter('providerOverride', i, 'from_cred') as string;
-			const model = this.getNodeParameter('model', i, 'gemini-2.5-flash') as string;
-			const verbosity = this.getNodeParameter('verbosity', i, 'concise') as string;
-			const includeThoughts = this.getNodeParameter('includeThoughts', i, true) as boolean;
-			const temperature = this.getNodeParameter('temperature', i, 0.2) as number;
-
-			if (!prompt || !prompt.trim()) {
-				returnData.push({
-					json: {
-						error: 'Prompt de entrada vazio.',
-					},
-				});
-				continue;
-			}
-
-			const tTotalStart = Date.now();
-
-			// 1. SYSTEM 1: Execução do Raciocínio Deliberado Jev
-			const jevDecision = localJevSimulate(prompt);
-
-			// 2. SYSTEM 2: Montagem do Contrato Sandwich para a LLM
-			let verbosityDirective = '';
-			if (verbosity === 'concise') {
-				verbosityDirective = 'DIRETIVA DE CONCISÃO: Responda de forma direta e concisa. Elimine saudações, preâmbulos, cumprimentos ou conclusões genéricas. Comece imediatamente pelo código ou solução técnica em tópicos objetivos.';
-			} else if (verbosity === 'balanced') {
-				verbosityDirective = 'DIRETIVA DE ESTILO EQUILIBRADO: Responda de forma profissional com código limpo e explicação sucinta acompanhando as decisões de implementação.';
-			} else {
-				verbosityDirective = 'DIRETIVA DE ESTILO DETALHADO: Responda de forma completa, didática e explicativa, aprofundando os conceitos fundamentais e decisões arquiteturais.';
-			}
-
-			const systemPrompt = `Você é a Voz Humana e Tradutora do Jev.
-O Jev é o motor de raciocínio neuro-simbólico que já analisou, diagnosticou e determinou a solução lógica para o usuário.
-
-DEDUÇÃO LÓGICA DO JEV:
-${jevDecision.core_deduction}
-
-RESTRIÇÕES DETERMINADAS PELO JEV:
-${jevDecision.constraints.map(c => '- ' + c).join('\n')}
-
-PLANO DE EXECUÇÃO CALCULADO PELO JEV:
-${jevDecision.execution_steps.join('\n')}
-
-DOMÍNIO TÉCNICO: ${jevDecision.domain}
-ESTILO EXIGIDO: ${jevDecision.code_specification.paradigm}
-
-${verbosityDirective}
-
-SUA TAREFA:
-Sintetize a resposta em português fluente seguindo fielmente o plano de execução e restrições calculadas pelo Jev acima.`;
-
-			// Determina provedor e chaves
-			const provider = providerOverride !== 'from_cred' ? providerOverride : (llmCreds.provider || 'gemini');
-			const apiKey = llmCreds.apiKey || llmCreds.customApiKey || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY || '';
-			const baseUrl = llmCreds.customBaseUrl || 'http://localhost:11434/v1';
-
-			let generatedText = '';
-			let usage: any = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
-
-			try {
-				if (provider === 'gemini') {
-					if (!apiKey) {
-						throw new NodeOperationError(this.getNode(), 'Chave de API do Google Gemini não configurada nas credenciais jevLlmApi.');
-					}
-					const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-					const response = await this.helpers.httpRequest({
-						method: 'POST',
-						url,
-						headers: { 'Content-Type': 'application/json' },
-						body: {
-							systemInstruction: { parts: [{ text: systemPrompt }] },
-							contents: [{ role: 'user', parts: [{ text: prompt }] }],
-							generationConfig: {
-								temperature,
-								maxOutputTokens: 4096,
-							},
-						},
-						json: true,
-					});
-
-					const candidate = response?.candidates?.[0];
-					generatedText = candidate?.content?.parts?.map((p: any) => p.text).join('') || '';
-					if (response?.usageMetadata) {
-						usage = {
-							prompt_tokens: response.usageMetadata.promptTokenCount || 0,
-							completion_tokens: response.usageMetadata.candidatesTokenCount || 0,
-							total_tokens: response.usageMetadata.totalTokenCount || 0,
-						};
-					}
-				} else {
-					// Provedores padrão OpenAI: DeepInfra, OpenRouter, OpenAI, Custom/Ollama
-					let endpoint = 'https://api.openai.com/v1/chat/completions';
-					if (provider === 'deepinfra') endpoint = 'https://api.deepinfra.com/v1/openai/chat/completions';
-					else if (provider === 'openrouter') endpoint = 'https://openrouter.ai/api/v1/chat/completions';
-					else if (provider === 'custom') endpoint = baseUrl.replace(/\/+$/, '') + '/chat/completions';
-
-					const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-					if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-
-					const response = await this.helpers.httpRequest({
-						method: 'POST',
-						url: endpoint,
-						headers,
-						body: {
-							model,
-							temperature,
-							messages: [
-								{ role: 'system', content: systemPrompt },
-								{ role: 'user', content: prompt }
-							],
-						},
-						json: true,
-					});
-
-					generatedText = response?.choices?.[0]?.message?.content || '';
-					if (response?.usage) {
-						usage = response.usage;
-					}
-				}
-			} catch (err: any) {
-				throw new NodeOperationError(this.getNode(), `Erro ao comunicar com a LLM (${provider}): ${err.message || err}`);
-			}
-
-			const tTotalEnd = Date.now();
-			const totalMs = Math.max(1, tTotalEnd - tTotalStart);
-
-			// Tokens calculados por agente respectivamente
-			const jevPromptTokens = Math.max(1, Math.round(prompt.length / 4));
-			const jevPlanStr = jevDecision.core_deduction + ' ' + jevDecision.execution_steps.join(' ') + ' ' + jevDecision.constraints.join(' ');
-			const jevCompletionTokens = Math.max(1, Math.round(jevPlanStr.length / 4));
-			const jevTotalTokens = jevPromptTokens + jevCompletionTokens;
-
-			const llmPromptTokens = usage.prompt_tokens || Math.max(1, Math.round(systemPrompt.length / 4) + jevPromptTokens);
-			const llmCompletionTokens = usage.completion_tokens || Math.max(1, Math.round(generatedText.length / 4));
-			const llmTotalTokens = usage.total_tokens || (llmPromptTokens + llmCompletionTokens);
-
-			const outputJson: any = {
-				output: generatedText,
-				response: generatedText,
-				tokens: {
-					jev_system_1: {
-						agent: 'Jev (Reasoner S1)',
-						prompt_tokens: jevPromptTokens,
-						completion_tokens: jevCompletionTokens,
-						total_tokens: jevTotalTokens,
-					},
-					llm_system_2: {
-						agent: `LLM Translator S2 (${provider}/${model})`,
-						prompt_tokens: llmPromptTokens,
-						completion_tokens: llmCompletionTokens,
-						total_tokens: llmTotalTokens,
-					},
-					total_tokens: jevTotalTokens + llmTotalTokens,
-				},
-				latency: {
-					jev_s1_ms: jevDecision.latency_s1_ms,
-					llm_s2_ms: Math.max(1, totalMs - jevDecision.latency_s1_ms),
-					total_ms: totalMs,
-				},
-				model,
-				provider,
-			};
-
-			if (includeThoughts) {
-				outputJson.thoughts = {
-					intent: jevDecision.intent,
-					intent_confidence: jevDecision.intent_confidence,
-					risk_assessment: jevDecision.risk_assessment,
-					risk_confidence: jevDecision.risk_confidence,
-					complexity_score: jevDecision.complexity_score,
-					complexity_label: jevDecision.complexity_label,
-					domain: jevDecision.domain,
-					core_deduction: jevDecision.core_deduction,
-					constraints: jevDecision.constraints,
-					execution_steps: jevDecision.execution_steps,
-					code_specification: jevDecision.code_specification,
-				};
-			}
-
-			returnData.push({
-				json: outputJson,
-				pairedItem: { item: i },
-			});
+		} catch (err: any) {
+			throw new NodeOperationError(this.getNode(), 'Credencial "LLM System 2 API" é necessária para o nó de modelo Jev.');
 		}
 
-		return [returnData];
+		const modelName = this.getNodeParameter('model', itemIndex, 'gemini-2.5-flash') as string;
+		const providerOverride = this.getNodeParameter('providerOverride', itemIndex, 'from_cred') as string;
+		const temperature = this.getNodeParameter('temperature', itemIndex, 0.2) as number;
+		const maxTokens = this.getNodeParameter('maxTokens', itemIndex, 4096) as number;
+		const verbosity = this.getNodeParameter('verbosity', itemIndex, 'concise') as 'concise' | 'balanced' | 'detailed';
+		const enableSandwich = this.getNodeParameter('enableSandwich', itemIndex, true) as boolean;
+
+		const provider = providerOverride !== 'from_cred' ? providerOverride : (llmCreds.provider || 'gemini');
+		let apiKey = llmCreds.apiKey || '';
+		let baseURL = 'https://api.openai.com/v1';
+
+		if (provider === 'gemini') {
+			baseURL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
+			if (!apiKey) {
+				apiKey = process.env.GEMINI_API_KEY || '';
+			}
+			if (!apiKey) {
+				throw new NodeOperationError(this.getNode(), 'Chave de API do Google Gemini não configurada nas credenciais jevLlmApi.');
+			}
+		} else if (provider === 'deepinfra') {
+			baseURL = 'https://api.deepinfra.com/v1/openai';
+		} else if (provider === 'openrouter') {
+			baseURL = 'https://openrouter.ai/api/v1';
+		} else if (provider === 'openai') {
+			baseURL = 'https://api.openai.com/v1';
+			if (!apiKey) {
+				apiKey = process.env.OPENAI_API_KEY || '';
+			}
+		} else if (provider === 'custom') {
+			baseURL = (llmCreds.customBaseUrl || 'http://localhost:11434/v1').replace(/\/+$/, '');
+			apiKey = llmCreds.customApiKey || apiKey || 'ollama';
+		}
+
+		const model = new JevChatModel(
+			{
+				model: modelName,
+				temperature,
+				maxTokens: maxTokens > 0 ? maxTokens : undefined,
+				apiKey,
+				configuration: {
+					baseURL,
+				},
+			},
+			{
+				verbosity,
+				enableSandwich,
+			},
+		);
+
+		return {
+			response: model,
+		};
 	}
 }
