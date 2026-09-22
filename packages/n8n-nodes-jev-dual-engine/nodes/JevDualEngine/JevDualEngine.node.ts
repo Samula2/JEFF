@@ -543,20 +543,14 @@ export class JevDualEngine implements INodeType {
 			throw new NodeOperationError(this.getNode(), 'Credencial "LLM System 2 API" é necessária para o nó de modelo Jev.');
 		}
 
-		let modelName = this.getNodeParameter('model', itemIndex, 'gemini-2.5-flash') as string;
+		// Respeita exatamente o que o usuário digitar
+		const modelName = this.getNodeParameter('model', itemIndex, 'gemini-2.5-flash') as string;
 		const providerOverride = this.getNodeParameter('providerOverride', itemIndex, 'from_cred') as string;
 		const cleanMath = this.getNodeParameter('cleanMath', itemIndex, true) as boolean;
 		const temperature = this.getNodeParameter('temperature', itemIndex, 0.2) as number;
 		const maxTokens = this.getNodeParameter('maxTokens', itemIndex, 4096) as number;
 		const verbosity = this.getNodeParameter('verbosity', itemIndex, 'concise') as 'concise' | 'balanced' | 'detailed';
 		const enableSandwich = this.getNodeParameter('enableSandwich', itemIndex, true) as boolean;
-
-		// Tolerância a typos: caso o usuário tenha digitado sem o sufixo de instrução -it
-		if (modelName === 'google/gemma-4-26b-a4b') {
-			modelName = 'google/gemma-4-26b-a4b-it';
-		} else if (modelName === 'google/gemma-4-31b') {
-			modelName = 'google/gemma-4-31b-it';
-		}
 
 		let provider = providerOverride !== 'from_cred' ? providerOverride : (llmCreds.provider || 'gemini');
 		let apiKey = llmCreds.apiKey || '';
