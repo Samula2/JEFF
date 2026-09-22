@@ -2,13 +2,42 @@ import {
 	INodeType,
 	INodeTypeDescription,
 	ISupplyDataFunctions,
-	NodeConnectionTypes,
+	ILoadOptionsFunctions,
+	INodePropertyOptions,
+	INodeProperties,
+	IDataObject,
 	NodeOperationError,
 	SupplyData,
+	NodeConnectionTypes,
 } from 'n8n-workflow';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, parse } from 'node:path';
 import { ChatOpenAI } from '@langchain/openai';
-import { BaseMessage, SystemMessage, AIMessageChunk } from '@langchain/core/messages';
-import { ChatResult, ChatGenerationChunk } from '@langchain/core/outputs';
+import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
+import {
+	AIMessage,
+	AIMessageChunk,
+	SystemMessage,
+	type BaseMessage,
+} from '@langchain/core/messages';
+import { ChatGenerationChunk, ChatResult } from '@langchain/core/outputs';
+import { GeminiChatModel, formatGeminiUsage } from './GeminiChatModel';
+import {
+	type ModelUsageReporter,
+	UniversalChatModelTracing,
+} from './UniversalChatModelTracing';
+import {
+	type ModelProvider,
+	type NormalizedModelError,
+	isRetryableModelError,
+	normalizeModelError,
+	retryAfterMsForModelError,
+	toUniversalModelError,
+} from './ModelError';
+
+// ─────────────────────────────────────────────────────────────
+// 1. JEV SYSTEM 1 SIMULATION & DELIBERATION ENGINE (<30ms)
+// ─────────────────────────────────────────────────────────────
 
 export interface JevSimulationResult {
 	intent: string;
@@ -183,6 +212,10 @@ export function localJevSimulate(prompt: string): JevSimulationResult {
 	};
 }
 
+// ─────────────────────────────────────────────────────────────
+// 2. ANTI-LATEX SANITIZER FOR CLEAN CHAT DISPLAY
+// ─────────────────────────────────────────────────────────────
+
 export function cleanLatexText(text: string): string {
 	if (!text || typeof text !== 'string') return text;
 	let out = text;
@@ -298,12 +331,9 @@ export function cleanLatexText(text: string): string {
 	return out;
 }
 
-export interface JevConfig {
-	verbosity?: 'concise' | 'balanced' | 'detailed';
-	enableSandwich?: boolean;
-	cleanMath?: boolean;
-	showTokenStats?: boolean;
-}
+// ─────────────────────────────────────────────────────────────
+// 3. TOKEN USAGE REPORTING HELPER
+// ─────────────────────────────────────────────────────────────
 
 export interface TokenUsageReport {
 	jevS1: {
@@ -372,89 +402,78 @@ export function computeTokenReport(params: {
 	};
 }
 
-export class JevChatModel extends ChatOpenAI {
-	readonly fields: any;
-	readonly jevConfig: JevConfig;
+export interface JevConfig {
+	enableSandwich?: boolean;
+	verbosity?: 'concise' | 'balanced' | 'detailed';
+	cleanMath?: boolean;
+	showTokenStats?: boolean;
+}
 
-	constructor(fields?: any, jevConfig: JevConfig = {}) {
-		super(fields);
-		this.fields = fields;
-		this.jevConfig = jevConfig;
-	}
+export function enrichMessagesWithJev(
+	messages: BaseMessage[],
+	jevConfig: JevConfig,
+): {
+	enrichedMessages: BaseMessage[];
+	promptText: string;
+	sandwichContract: string;
+	jevDecision: JevSimulationResult | null;
+	enrichedPromptLength: number;
+} {
+	const calcLen = (msgs: BaseMessage[]) =>
+		msgs.reduce((acc, m) => {
+			if (typeof (m as any).content === 'string') return acc + (m as any).content.length;
+			if (Array.isArray((m as any).content)) {
+				return acc + (m as any).content.reduce((inner: number, c: any) => inner + (typeof c === 'string' ? c.length : c?.text?.length || 0), 0);
+			}
+			return acc;
+		}, 0);
 
-	override withConfig(config: any): this {
-		const newModel = new JevChatModel(this.fields, this.jevConfig);
-		newModel.defaultOptions = {
-			...this.defaultOptions,
-			...config,
+	if (jevConfig.enableSandwich === false || !messages || messages.length === 0) {
+		return {
+			enrichedMessages: messages,
+			promptText: '',
+			sandwichContract: '',
+			jevDecision: null,
+			enrichedPromptLength: calcLen(messages || []),
 		};
-		return newModel as this;
 	}
 
-	enrichMessagesWithJev(messages: BaseMessage[]): {
-		enrichedMessages: BaseMessage[];
-		promptText: string;
-		sandwichContract: string;
-		jevDecision: JevSimulationResult | null;
-		enrichedPromptLength: number;
-	} {
-		const calcLen = (msgs: BaseMessage[]) =>
-			msgs.reduce((acc, m) => {
-				if (typeof m.content === 'string') return acc + m.content.length;
-				if (Array.isArray(m.content)) {
-					return acc + m.content.reduce((inner: number, c: any) => inner + (typeof c === 'string' ? c.length : c?.text?.length || 0), 0);
-				}
-				return acc;
-			}, 0);
+	const humanMsgs = messages.filter((m) => typeof (m as any).getType === 'function' && (m as any).getType() === 'human');
+	const targetMsg = humanMsgs.length > 0 ? humanMsgs[humanMsgs.length - 1] : messages[messages.length - 1];
 
-		if (this.jevConfig.enableSandwich === false || !messages || messages.length === 0) {
-			return {
-				enrichedMessages: messages,
-				promptText: '',
-				sandwichContract: '',
-				jevDecision: null,
-				enrichedPromptLength: calcLen(messages || []),
-			};
-		}
+	let promptText = '';
+	if (typeof (targetMsg as any)?.content === 'string') {
+		promptText = (targetMsg as any).content;
+	} else if (Array.isArray((targetMsg as any)?.content)) {
+		promptText = (targetMsg as any).content
+			.map((c: any) => (typeof c === 'string' ? c : c?.text || ''))
+			.join(' ');
+	}
 
-		// Identifica a mensagem humana mais recente
-		const humanMsgs = messages.filter((m) => m.getType() === 'human');
-		const targetMsg = humanMsgs.length > 0 ? humanMsgs[humanMsgs.length - 1] : messages[messages.length - 1];
+	if (!promptText.trim()) {
+		return {
+			enrichedMessages: messages,
+			promptText: '',
+			sandwichContract: '',
+			jevDecision: null,
+			enrichedPromptLength: calcLen(messages),
+		};
+	}
 
-		let promptText = '';
-		if (typeof targetMsg?.content === 'string') {
-			promptText = targetMsg.content;
-		} else if (Array.isArray(targetMsg?.content)) {
-			promptText = targetMsg.content
-				.map((c: any) => (typeof c === 'string' ? c : c?.text || ''))
-				.join(' ');
-		}
+	const jevDecision = localJevSimulate(promptText);
 
-		if (!promptText.trim()) {
-			return {
-				enrichedMessages: messages,
-				promptText: '',
-				sandwichContract: '',
-				jevDecision: null,
-				enrichedPromptLength: calcLen(messages),
-			};
-		}
+	let verbosityDirective = '';
+	const verbosity = jevConfig.verbosity || 'concise';
+	if (verbosity === 'concise') {
+		verbosityDirective = 'DIRETIVA: Responda de forma direta e concisa. Elimine saudações vazias e prolixidade. Vá direto ao ponto ou código.';
+	} else if (verbosity === 'balanced') {
+		verbosityDirective = 'DIRETIVA: Responda de forma profissional e equilibrada, combinando o plano deliberado com código e explicações claras.';
+	} else {
+		verbosityDirective = 'DIRETIVA: Responda de forma aprofundada, didática e conceitual.';
+	}
 
-		// Raciocínio Deliberado System 1 (<30ms)
-		const jevDecision = localJevSimulate(promptText);
-
-		let verbosityDirective = '';
-		const verbosity = this.jevConfig.verbosity || 'concise';
-		if (verbosity === 'concise') {
-			verbosityDirective = 'DIRETIVA: Responda de forma direta e concisa. Elimine saudações vazias e prolixidade. Vá direto ao ponto ou código.';
-		} else if (verbosity === 'balanced') {
-			verbosityDirective = 'DIRETIVA: Responda de forma profissional e equilibrada, combinando o plano deliberado com código e explicações claras.';
-		} else {
-			verbosityDirective = 'DIRETIVA: Responda de forma aprofundada, didática e conceitual.';
-		}
-
-		const cleanMathDirective = this.jevConfig.cleanMath !== false
-			? `\nREGRA ESTRITA DE FORMATAÇÃO (SEM LATEX):
+	const cleanMathDirective = jevConfig.cleanMath !== false
+		? `\nREGRA ESTRITA DE FORMATAÇÃO (SEM LATEX):
 O chat do n8n NÃO SUPORTA NENHUMA SINTAXE LATEX. É ESTRITAMENTE PROIBIDO usar barras invertidas para letras gregas ou símbolos.
 - NUNCA use \\lambda, use λ.
 - NUNCA use \\cdot, use · ou *.
@@ -468,16 +487,16 @@ O chat do n8n NÃO SUPORTA NENHUMA SINTAXE LATEX. É ESTRITAMENTE PROIBIDO usar 
 - NUNCA use chaves de agrupamento matemático como {\\dotH^s} ou I_{ext}. Use I_ext, H^s, etc.
 - NUNCA use delimitadores $ ou $$.
 Toda a matemática e física DEVE ser redigida exclusivamente em texto limpo com caracteres Unicode naturais.`
-			: '';
+		: '';
 
-		const isGreeting = /^(oi|olá|ola|e aí|e ai|opa|bom dia|boa tarde|boa noite|hello|hi|hey|teste|test)\b/i.test(promptText.trim()) ||
-			(jevDecision.intent === 'chat' && promptText.length < 30);
+	const isGreeting = /^(oi|olá|ola|e aí|e ai|opa|bom dia|boa tarde|boa noite|hello|hi|hey|teste|test)\b/i.test(promptText.trim()) ||
+		(jevDecision.intent === 'chat' && promptText.length < 30);
 
-		let sandwichContract = '';
-		if (isGreeting) {
-			sandwichContract = `[DIRETRIZ JEV REASONING]: Interação conversacional direta. Responda com cordialidade natural e prontidão, sem jargões ou estruturas mecânicas.${cleanMathDirective}`;
-		} else {
-			sandwichContract = `[JEV REASONING CONTEXT & GUIDELINES]
+	let sandwichContract = '';
+	if (isGreeting) {
+		sandwichContract = `[DIRETRIZ JEV REASONING]: Interação conversacional direta. Responda com cordialidade natural e prontidão, sem jargões ou estruturas mecânicas.${cleanMathDirective}`;
+	} else {
+		sandwichContract = `[JEV REASONING CONTEXT & GUIDELINES]
 O Jev deliberou a triagem analítica prévia (System 1) para esta requisição:
 - Foco Lógico: ${jevDecision.core_deduction}
 - Domínio: ${jevDecision.domain} (${jevDecision.complexity_label})
@@ -491,58 +510,66 @@ DIRETRIZ DE EXECUÇÃO:
 - Se for necessário acionar ferramentas (tools) conectadas ao agente, execute-as prioritariamente.
 - Incorpore este raciocínio deliberado de forma fluida, natural e profissional na resposta final.
 - NUNCA mencione nem repita rótulos internos como "System 2", "Contrato do Jev" ou "Plano do Jev" no texto visível ao usuário.`;
-		}
-
-		const enriched = [...messages];
-		const sysIndex = enriched.findIndex((m) => m.getType() === 'system');
-
-		if (sysIndex >= 0) {
-			const existingContent = enriched[sysIndex].content;
-			const textContent = typeof existingContent === 'string' ? existingContent : JSON.stringify(existingContent);
-			if (textContent.includes('[JEV REASONING') || textContent.includes('[JEV SYSTEM 1') || textContent.includes('[DIRETRIZ JEV')) {
-				const baseContent = textContent.split(/\[(?:JEV REASONING|JEV SYSTEM 1|DIRETRIZ JEV)/)[0].trim();
-				enriched[sysIndex] = new SystemMessage(baseContent ? `${baseContent}\n\n${sandwichContract}` : sandwichContract);
-			} else {
-				enriched[sysIndex] = new SystemMessage(`${textContent}\n\n${sandwichContract}`);
-			}
-		} else {
-			enriched.unshift(new SystemMessage(sandwichContract));
-		}
-
-		return {
-			enrichedMessages: enriched,
-			promptText,
-			sandwichContract,
-			jevDecision,
-			enrichedPromptLength: calcLen(enriched),
-		};
 	}
 
-	// @ts-ignore
-	override async _generate(messages: BaseMessage[], options: any, runManager?: any): Promise<ChatResult> {
-		const { enrichedMessages, promptText, sandwichContract, jevDecision, enrichedPromptLength } = this.enrichMessagesWithJev(messages);
-		const result = await super._generate(enrichedMessages, options, runManager);
+	const enriched = [...messages];
+	const sysIndex = enriched.findIndex((m) => typeof (m as any).getType === 'function' && (m as any).getType() === 'system');
+
+	if (sysIndex >= 0) {
+		const existingContent = (enriched[sysIndex] as any).content;
+		const textContent = typeof existingContent === 'string' ? existingContent : JSON.stringify(existingContent);
+		if (textContent.includes('[JEV REASONING') || textContent.includes('[JEV SYSTEM 1') || textContent.includes('[DIRETRIZ JEV')) {
+			const baseContent = textContent.split(/\[(?:JEV REASONING|JEV SYSTEM 1|DIRETRIZ JEV)/)[0].trim();
+			enriched[sysIndex] = new SystemMessage(baseContent ? `${baseContent}\n\n${sandwichContract}` : sandwichContract);
+		} else {
+			enriched[sysIndex] = new SystemMessage(`${textContent}\n\n${sandwichContract}`);
+		}
+	} else {
+		enriched.unshift(new SystemMessage(sandwichContract));
+	}
+
+	return {
+		enrichedMessages: enriched,
+		promptText,
+		sandwichContract,
+		jevDecision,
+		enrichedPromptLength: calcLen(enriched),
+	};
+}
+
+export function applyJevDualEngine(
+	model: BaseChatModel,
+	jevConfig: JevConfig,
+): BaseChatModel {
+	const mutableModel = model as any;
+	const originalGenerate = mutableModel._generate.bind(mutableModel);
+
+	mutableModel._generate = async (messages: BaseMessage[], options: any, runManager?: any): Promise<ChatResult> => {
+		const { enrichedMessages, promptText, sandwichContract, jevDecision, enrichedPromptLength } =
+			enrichMessagesWithJev(messages, jevConfig);
+
+		const result: ChatResult = await originalGenerate(enrichedMessages, options, runManager);
 
 		if (result?.generations) {
 			for (const gen of result.generations) {
-				if (this.jevConfig.cleanMath !== false) {
+				if (jevConfig.cleanMath !== false) {
 					if (typeof gen.text === 'string') {
 						gen.text = cleanLatexText(gen.text);
 					}
-					if (gen.message && typeof gen.message.content === 'string') {
-						gen.message.content = cleanLatexText(gen.message.content);
+					if (gen.message && typeof (gen.message as any).content === 'string') {
+						(gen.message as any).content = cleanLatexText((gen.message as any).content);
 					}
 				}
 
-				const outputContent = typeof gen.message?.content === 'string'
-					? gen.message.content
+				const outputContent = typeof (gen.message as any)?.content === 'string'
+					? (gen.message as any).content
 					: (gen.text || '');
 
 				const genMsg = gen.message as any;
 				const apiUsage = {
-					promptTokens: genMsg?.usage_metadata?.input_tokens ?? result.llmOutput?.tokenUsage?.promptTokens,
-					completionTokens: genMsg?.usage_metadata?.output_tokens ?? result.llmOutput?.tokenUsage?.completionTokens,
-					totalTokens: genMsg?.usage_metadata?.total_tokens ?? result.llmOutput?.tokenUsage?.totalTokens,
+					promptTokens: genMsg?.usage_metadata?.input_tokens ?? (result.llmOutput as any)?.tokenUsage?.promptTokens ?? (result.llmOutput as any)?.gemini?.tokenUsage?.input,
+					completionTokens: genMsg?.usage_metadata?.output_tokens ?? (result.llmOutput as any)?.tokenUsage?.completionTokens ?? (result.llmOutput as any)?.gemini?.tokenUsage?.output,
+					totalTokens: genMsg?.usage_metadata?.total_tokens ?? (result.llmOutput as any)?.tokenUsage?.totalTokens ?? (result.llmOutput as any)?.gemini?.tokenUsage?.total,
 				};
 
 				const tokenReport = computeTokenReport({
@@ -575,117 +602,842 @@ DIRETRIZ DE EXECUÇÃO:
 					};
 				}
 
-				if (this.jevConfig.showTokenStats !== false) {
+				if (jevConfig.showTokenStats !== false) {
 					const statsFooter = `\n\n---\n\`⚡ Jev S1: ${tokenReport.jevS1.totalTokens} tokens | 🤖 LLM S2: ${tokenReport.llmS2.totalTokens} tokens | Total: ${tokenReport.totalTokens} tokens\``;
 					gen.text = (gen.text || '') + statsFooter;
-					if (gen.message && typeof gen.message.content === 'string') {
-						gen.message.content = gen.message.content + statsFooter;
+					if (gen.message && typeof (gen.message as any).content === 'string') {
+						(gen.message as any).content = (gen.message as any).content + statsFooter;
 					}
 				}
 			}
 		}
 
 		return result;
-	}
+	};
 
-	// @ts-ignore
-	override async *_streamResponseChunks(messages: BaseMessage[], options: any, runManager?: any): AsyncGenerator<any, void, unknown> {
-		const { enrichedMessages, promptText, sandwichContract, jevDecision, enrichedPromptLength } = this.enrichMessagesWithJev(messages);
-		let buffer = '';
-		let fullOutput = '';
-		let apiUsage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
+	if (typeof mutableModel._streamResponseChunks === 'function') {
+		const originalStream = mutableModel._streamResponseChunks.bind(mutableModel);
+		mutableModel._streamResponseChunks = async function* (messages: BaseMessage[], options: any, runManager?: any) {
+			const { enrichedMessages, promptText, sandwichContract, jevDecision, enrichedPromptLength } =
+				enrichMessagesWithJev(messages, jevConfig);
 
-		for await (const chunk of super._streamResponseChunks(enrichedMessages, options, runManager)) {
-			const usage = (chunk?.message as any)?.usage_metadata;
-			if (usage) {
-				apiUsage = {
-					promptTokens: usage.input_tokens,
-					completionTokens: usage.output_tokens,
-					totalTokens: usage.total_tokens,
-				};
-			}
+			let buffer = '';
+			let fullOutput = '';
+			let apiUsage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
 
-			if (this.jevConfig.cleanMath === false) {
-				const text = chunk?.text || (typeof chunk?.message?.content === 'string' ? chunk.message.content : '');
-				if (text) fullOutput += text;
-				yield chunk;
-				continue;
-			}
+			for await (const chunk of originalStream(enrichedMessages, options, runManager)) {
+				const usage = (chunk?.message as any)?.usage_metadata;
+				if (usage) {
+					apiUsage = {
+						promptTokens: usage.input_tokens,
+						completionTokens: usage.output_tokens,
+						totalTokens: usage.total_tokens,
+					};
+				}
 
-			const text = chunk?.text || (typeof chunk?.message?.content === 'string' ? chunk.message.content : '');
-			if (text) {
-				buffer += text;
-				const lastBackslash = buffer.lastIndexOf('\\');
-				if (lastBackslash === -1) {
-					const cleaned = cleanLatexText(buffer);
-					buffer = '';
-					fullOutput += cleaned;
-					if (chunk.text !== undefined) chunk.text = cleaned;
-					if (chunk?.message && typeof chunk.message.content === 'string') chunk.message.content = cleaned;
+				if (jevConfig.cleanMath === false) {
+					const text = chunk?.text || (typeof (chunk?.message as any)?.content === 'string' ? (chunk.message as any).content : '');
+					if (text) fullOutput += text;
 					yield chunk;
-				} else {
-					const afterBackslash = buffer.slice(lastBackslash + 1);
-					if (/[^a-zA-Z]/.test(afterBackslash)) {
+					continue;
+				}
+
+				const text = chunk?.text || (typeof (chunk?.message as any)?.content === 'string' ? (chunk.message as any).content : '');
+				if (text) {
+					buffer += text;
+					const lastBackslash = buffer.lastIndexOf('\\');
+					if (lastBackslash === -1) {
 						const cleaned = cleanLatexText(buffer);
 						buffer = '';
 						fullOutput += cleaned;
 						if (chunk.text !== undefined) chunk.text = cleaned;
-						if (chunk?.message && typeof chunk.message.content === 'string') chunk.message.content = cleaned;
+						if (chunk?.message && typeof (chunk.message as any).content === 'string') (chunk.message as any).content = cleaned;
 						yield chunk;
+					} else {
+						const afterBackslash = buffer.slice(lastBackslash + 1);
+						if (/[^a-zA-Z]/.test(afterBackslash)) {
+							const cleaned = cleanLatexText(buffer);
+							buffer = '';
+							fullOutput += cleaned;
+							if (chunk.text !== undefined) chunk.text = cleaned;
+							if (chunk?.message && typeof (chunk.message as any).content === 'string') (chunk.message as any).content = cleaned;
+							yield chunk;
+						}
 					}
+				} else {
+					yield chunk;
 				}
-			} else {
-				yield chunk;
 			}
-		}
 
-		if (buffer) {
-			const cleaned = cleanLatexText(buffer);
-			fullOutput += cleaned;
-			yield new ChatGenerationChunk({
-				text: cleaned,
-				message: new AIMessageChunk({ content: cleaned }),
+			if (buffer) {
+				const cleaned = cleanLatexText(buffer);
+				fullOutput += cleaned;
+				yield new ChatGenerationChunk({
+					text: cleaned,
+					message: new AIMessageChunk({ content: cleaned }),
+				});
+			}
+
+			const tokenReport = computeTokenReport({
+				promptText,
+				sandwichContract,
+				jevDecision,
+				enrichedPromptLength,
+				outputContent: fullOutput,
+				apiUsage,
 			});
+
+			const statsBadge = jevConfig.showTokenStats !== false
+				? `\n\n---\n\`⚡ Jev S1: ${tokenReport.jevS1.totalTokens} tokens | 🤖 LLM S2: ${tokenReport.llmS2.totalTokens} tokens | Total: ${tokenReport.totalTokens} tokens\``
+				: '';
+
+			yield new ChatGenerationChunk({
+				text: statsBadge,
+				message: new AIMessageChunk({
+					content: statsBadge,
+					usage_metadata: {
+						input_tokens: tokenReport.jevS1.promptTokens + tokenReport.llmS2.promptTokens,
+						output_tokens: tokenReport.jevS1.completionTokens + tokenReport.llmS2.completionTokens,
+						total_tokens: tokenReport.totalTokens,
+					},
+					response_metadata: {
+						tokenUsage: {
+							promptTokens: tokenReport.jevS1.promptTokens + tokenReport.llmS2.promptTokens,
+							completionTokens: tokenReport.jevS1.completionTokens + tokenReport.llmS2.completionTokens,
+							totalTokens: tokenReport.totalTokens,
+						},
+						tokens: {
+							jev_s1: tokenReport.jevS1,
+							llm_s2: tokenReport.llmS2,
+							total: tokenReport.totalTokens,
+						},
+					},
+				}),
+			});
+		};
+	}
+
+	return model;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 4. MODEL EXECUTION & RETRY HANDLING (UNIVERSAL RUNTIME)
+// ─────────────────────────────────────────────────────────────
+
+interface ModelExecutionSettings {
+	alwaysOutputData: boolean;
+	executeOnce: boolean;
+	retryOnFail: boolean;
+	maxTries: number;
+	waitBetweenTries: number;
+	onError: 'stopWorkflow' | 'continueRegularOutput' | 'continueErrorOutput';
+}
+
+interface UsageReportingOptions {
+	systemMessage?: string;
+	includeTokenUsageInAgentOutput?: boolean;
+	includeIntermediateStepsInOutput?: boolean;
+	enableUsageReporter?: boolean;
+	nodeLabel?: string;
+	inputTextMode?: 'label' | 'prompt';
+	inputTextLabel?: string;
+	includeOutputText?: boolean;
+	failOnReporterError?: boolean;
+	reporterMaxWaitMs?: number;
+	usageReporter?: {
+		settings?: UsageReportingOptions & {
+			enabled?: boolean;
+		};
+	};
+}
+
+interface UsageReporterTool {
+	invoke?: (input: IDataObject) => Promise<unknown>;
+	func?: (input: IDataObject) => Promise<unknown>;
+}
+
+function asUsageReporterTool(value: unknown): UsageReporterTool | undefined {
+	const candidate = Array.isArray(value) ? value[0] : value;
+	if (!candidate || typeof candidate !== 'object') return undefined;
+
+	const tool = candidate as UsageReporterTool;
+	return typeof tool.invoke === 'function' || typeof tool.func === 'function'
+		? tool
+		: undefined;
+}
+
+async function createUsageReporter(
+	context: ISupplyDataFunctions,
+	itemIndex: number,
+	modelName: string,
+	options: UsageReportingOptions,
+): Promise<ModelUsageReporter | undefined> {
+	if (options.enableUsageReporter !== true) return undefined;
+
+	const runtimeContext = context as ISupplyDataFunctions & {
+		getParentNodes?: ISupplyDataFunctions['getParentNodes'];
+		getInputConnectionData?: ISupplyDataFunctions['getInputConnectionData'];
+	};
+
+	if (
+		typeof runtimeContext.getParentNodes !== 'function' ||
+		typeof runtimeContext.getInputConnectionData !== 'function'
+	) {
+		return undefined;
+	}
+
+	const connectedReporterNodes = runtimeContext.getParentNodes(
+		context.getNode().name,
+		{
+			connectionType: NodeConnectionTypes.AiTool,
+			depth: 1,
+		},
+	);
+	if (connectedReporterNodes.length === 0) return undefined;
+
+	const connectedTool = await runtimeContext.getInputConnectionData(
+		NodeConnectionTypes.AiTool,
+		itemIndex,
+	);
+	const reporterTool = asUsageReporterTool(connectedTool);
+	if (!reporterTool) {
+		throw new NodeOperationError(
+			context.getNode(),
+			'The connected Usage Reporter did not provide a callable AI Tool.',
+			{
+				functionality: 'configuration-node',
+				description:
+					'Connect a Workflow Tool or another AI Tool that accepts the usage-report fields.',
+			},
+		);
+	}
+
+	const workflow = context.getWorkflow();
+	const executionId = context.getExecutionId();
+	const nodeLabel =
+		typeof options.nodeLabel === 'string' && options.nodeLabel.trim()
+			? options.nodeLabel.trim()
+			: context.getNode().name;
+	const inputTextMode = options.inputTextMode ?? 'label';
+	const inputTextLabel =
+		typeof options.inputTextLabel === 'string' &&
+		options.inputTextLabel.trim()
+			? options.inputTextLabel
+			: 'RAG';
+	const includeOutputText = options.includeOutputText !== false;
+	const failOnReporterError = options.failOnReporterError === true;
+	const reporterMaxWaitMs =
+		typeof options.reporterMaxWaitMs === 'number' &&
+		Number.isFinite(options.reporterMaxWaitMs)
+			? Math.max(0, options.reporterMaxWaitMs)
+			: 1000;
+
+	return async (event) => {
+		const usage = event.tokenUsage;
+		const promptText = event.prompts.join('\n');
+		const payload: IDataObject = {
+			model: modelName,
+			input_token: usage.inputTokens,
+			input_uncached_token: usage.inputUncachedTokens,
+			output_token: usage.outputTokens,
+			total_token: usage.totalTokens,
+			cached_token: usage.cachedTokens,
+			thoughts_token: usage.thoughtsTokens,
+			tool_token: usage.toolUsePromptTokens,
+			overhead_token: usage.thoughtsTokens + usage.toolUsePromptTokens,
+			model_calls: 1,
+			input_text: inputTextMode === 'prompt' ? promptText : inputTextLabel,
+			output_text: includeOutputText ? event.outputText : '',
+			workflow_id: workflow.id,
+			workflow_name: workflow.name ?? '',
+			execution_id:
+				executionId && executionId !== '__UNKNOWN__' ? executionId : '',
+			node: nodeLabel,
+			dump: JSON.stringify({
+				provider: event.provider,
+				model: modelName,
+				tokenUsage: usage,
+				...(event.usageMetadata
+					? { usageMetadata: event.usageMetadata }
+					: {}),
+				...(event.gemini ? { gemini: event.gemini } : {}),
+			}),
+		};
+
+		try {
+			const reporterPromise = Promise.resolve().then(() =>
+				typeof reporterTool.func === 'function'
+					? reporterTool.func(payload)
+					: reporterTool.invoke!(payload),
+			);
+			void reporterPromise.catch(() => undefined);
+
+			if (reporterMaxWaitMs === 0) {
+				await reporterPromise;
+			} else {
+				let timer: NodeJS.Timeout | undefined;
+				try {
+					await Promise.race([
+						reporterPromise,
+						new Promise<never>((_, reject) => {
+							timer = setTimeout(() => {
+								const timeoutError = new Error(
+									`Usage Reporter exceeded the maximum wait of ${reporterMaxWaitMs} ms`,
+								);
+								timeoutError.name = 'UsageReporterTimeoutError';
+								reject(timeoutError);
+							}, reporterMaxWaitMs);
+						}),
+					]);
+				} finally {
+					if (timer) clearTimeout(timer);
+				}
+			}
+		} catch (error) {
+			const reporterError =
+				error instanceof Error ? error : new Error(String(error));
+			if (failOnReporterError) {
+				throw new NodeOperationError(context.getNode(), reporterError, {
+					functionality: 'configuration-node',
+					message: 'Usage Reporter failed',
+					description:
+						'The model call succeeded, but the connected usage-reporting tool failed.',
+				});
+			}
+
+			context.logger.warn(
+				`Usage Reporter failed after a successful model call: ${reporterError.message}`,
+			);
+		}
+	};
+}
+
+function sharedModelOptions(): INodeProperties[] {
+	return [
+		{
+			displayName: 'System Message',
+			name: 'systemMessage',
+			type: 'string',
+			typeOptions: { rows: 5 },
+			default: '',
+			placeholder: 'Instruções extras aplicadas a cada chamada do modelo',
+			description: 'Instruções de sistema adicionais aplicadas em conjunto com as instruções do nó pai',
+		},
+		{
+			displayName: 'Include Token Usage in Output',
+			name: 'includeTokenUsageInAgentOutput',
+			type: 'boolean',
+			default: false,
+			description: 'Expõe tokenUsage e usageMetadata no output do nó pai (AI Agent). O rodapé visual no chat e o Usage Reporter continuam independentes dessa opção.',
+		},
+		{
+			displayName: 'Include Intermediate Steps in Output',
+			name: 'includeIntermediateStepsInOutput',
+			type: 'boolean',
+			default: false,
+			description: 'Inclui uma lista compacta dos passos das ferramentas no output do agente.',
+		},
+		{
+			displayName: 'Usage Reporter',
+			name: 'usageReporter',
+			type: 'fixedCollection',
+			default: {
+				settings: {
+					enabled: false,
+					nodeLabel: '',
+					inputTextMode: 'label',
+					inputTextLabel: 'RAG',
+					includeOutputText: true,
+					reporterMaxWaitMs: 1000,
+					failOnReporterError: false,
+				},
+			},
+			description: 'Opcionalmente envia telemetria e tokens para um AI Tool conectado após cada resposta',
+			options: [
+				{
+					displayName: 'Usage Reporter',
+					name: 'settings',
+					values: [
+						{
+							displayName: 'Enable Usage Reporter',
+							name: 'enabled',
+							type: 'boolean',
+							default: false,
+							noDataExpression: true,
+							description: 'Habilita conector AI Tool opcional para receber relatórios de tokens em tempo real',
+						},
+						{
+							displayName: 'Node Label',
+							name: 'nodeLabel',
+							type: 'string',
+							default: '',
+							placeholder: 'ex: Atendimento ao Cliente',
+							displayOptions: {
+								show: {
+									enabled: [true],
+								},
+							},
+							description: 'Rótulo exibido na telemetria',
+						},
+						{
+							displayName: 'Input Text Mode',
+							name: 'inputTextMode',
+							type: 'options',
+							options: [
+								{
+									name: 'Fixed Label',
+									value: 'label',
+									description: 'Envia um rótulo fixo ao invés do prompt completo.',
+								},
+								{
+									name: 'Actual User Input',
+									value: 'prompt',
+									description: 'Envia apenas o texto real da última mensagem do usuário.',
+								},
+							],
+							default: 'label',
+							displayOptions: {
+								show: {
+									enabled: [true],
+								},
+							},
+						},
+						{
+							displayName: 'Input Text Label',
+							name: 'inputTextLabel',
+							type: 'string',
+							default: 'RAG',
+							displayOptions: {
+								show: {
+									enabled: [true],
+									inputTextMode: ['label'],
+								},
+							},
+						},
+						{
+							displayName: 'Include Output Text',
+							name: 'includeOutputText',
+							type: 'boolean',
+							default: true,
+							displayOptions: {
+								show: {
+									enabled: [true],
+								},
+							},
+						},
+						{
+							displayName: 'Maximum Wait (ms)',
+							name: 'reporterMaxWaitMs',
+							type: 'number',
+							default: 1000,
+							typeOptions: {
+								minValue: 0,
+								numberStepSize: 100,
+							},
+							displayOptions: {
+								show: {
+									enabled: [true],
+								},
+							},
+							description: 'Tempo máximo de espera em ms antes de continuar em segundo plano. 0 = aguarda indefinidamente.',
+						},
+						{
+							displayName: 'Fail Workflow if Reporter Fails',
+							name: 'failOnReporterError',
+							type: 'boolean',
+							default: false,
+							displayOptions: {
+								show: {
+									enabled: [true],
+								},
+							},
+						},
+					],
+				},
+			],
+		},
+	];
+}
+
+function resolveSharedModelOptions(
+	context: ISupplyDataFunctions,
+	providerOptions: Record<string, any>,
+): UsageReportingOptions {
+	const legacy = context.getNode().parameters;
+	const groupedReporting = providerOptions.usageReporter?.settings ?? {};
+
+	return {
+		systemMessage: providerOptions.systemMessage ?? (typeof legacy.systemMessage === 'string' ? legacy.systemMessage : ''),
+		includeTokenUsageInAgentOutput: providerOptions.includeTokenUsageInAgentOutput ?? false,
+		includeIntermediateStepsInOutput: providerOptions.includeIntermediateStepsInOutput ?? false,
+		enableUsageReporter: groupedReporting.enabled ?? false,
+		nodeLabel: groupedReporting.nodeLabel,
+		inputTextMode: groupedReporting.inputTextMode,
+		inputTextLabel: groupedReporting.inputTextLabel,
+		includeOutputText: groupedReporting.includeOutputText,
+		failOnReporterError: groupedReporting.failOnReporterError,
+		reporterMaxWaitMs: groupedReporting.reporterMaxWaitMs,
+	};
+}
+
+export function getModelExecutionSettings(
+	context: ISupplyDataFunctions,
+	itemIndex: number,
+): ModelExecutionSettings {
+	const node = context.getNode() as any;
+	const customRetryOnFail =
+		node.modelRetryOnFail === true ||
+		(context.getNodeParameter('modelRetryOnFail', itemIndex, false) as boolean);
+	const retryOnFail = node.retryOnFail === true || customRetryOnFail;
+	const useNativeRetry = node.retryOnFail === true;
+	const customOnError =
+		node.modelOnError ??
+		(context.getNodeParameter('modelOnError', itemIndex, 'stopWorkflow') as ModelExecutionSettings['onError']);
+	const onError =
+		node.onError ??
+		(node.continueOnFail === true ? 'continueRegularOutput' : customOnError);
+
+	return {
+		alwaysOutputData:
+			node.alwaysOutputData === true ||
+			node.modelAlwaysOutputData === true ||
+			(context.getNodeParameter('modelAlwaysOutputData', itemIndex, false) as boolean),
+		executeOnce:
+			node.executeOnce === true ||
+			node.modelExecuteOnce === true ||
+			(context.getNodeParameter('modelExecuteOnce', itemIndex, false) as boolean),
+		retryOnFail,
+		maxTries: retryOnFail
+			? Math.max(
+					2,
+					Math.min(
+						5,
+						Number(
+							useNativeRetry
+								? (node.maxTries ?? 3)
+								: (node.modelMaxTries ?? context.getNodeParameter('modelMaxTries', itemIndex, 3)),
+						),
+					),
+				)
+			: 1,
+		waitBetweenTries: retryOnFail
+			? Math.max(
+					0,
+					Math.min(
+						5000,
+						Number(
+							useNativeRetry
+								? (node.waitBetweenTries ?? 1000)
+								: (node.modelWaitBetweenTries ?? context.getNodeParameter('modelWaitBetweenTries', itemIndex, 1000)),
+						),
+					),
+				)
+			: 0,
+		onError,
+	};
+}
+
+function shouldExposeModelExecutionProperties(): boolean {
+	let parentModule = module.parent;
+	while (parentModule) {
+		let directory = dirname(parentModule.filename);
+		const root = parse(directory).root;
+
+		while (directory !== root) {
+			const packageJsonPath = join(directory, 'package.json');
+			if (existsSync(packageJsonPath)) {
+				try {
+					const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as {
+						name?: string;
+						version?: string;
+					};
+					if (
+						(packageJson.name === 'n8n' || packageJson.name === 'n8n-core') &&
+						packageJson.version
+					) {
+						const match = /^(\d+)\.(\d+)/.exec(packageJson.version);
+						if (!match) return true;
+						const major = Number(match[1]);
+						const minor = Number(match[2]);
+						return major > 2 || (major === 2 && minor > 2);
+					}
+				} catch {}
+			}
+			directory = dirname(directory);
+		}
+		parentModule = parentModule.parent;
+	}
+	return true;
+}
+
+function isAbortError(error: unknown, signal?: AbortSignal): boolean {
+	if (signal?.aborted) return true;
+	return error instanceof Error && error.name === 'AbortError';
+}
+
+async function waitForRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
+	if (delayMs <= 0) return;
+
+	await new Promise<void>((resolve, reject) => {
+		const finish = () => {
+			signal?.removeEventListener('abort', abort);
+			resolve();
+		};
+		const timeout = setTimeout(finish, delayMs);
+		const abort = () => {
+			clearTimeout(timeout);
+			signal?.removeEventListener('abort', abort);
+			const error = new Error('The model request was aborted.');
+			error.name = 'AbortError';
+			reject(error);
+		};
+
+		if (signal?.aborted) {
+			abort();
+			return;
 		}
 
-		const tokenReport = computeTokenReport({
-			promptText,
-			sandwichContract,
-			jevDecision,
-			enrichedPromptLength,
-			outputContent: fullOutput,
-			apiUsage,
-		});
+		signal?.addEventListener('abort', abort, { once: true });
+	});
+}
 
-		const statsBadge = this.jevConfig.showTokenStats !== false
-			? `\n\n---\n\`⚡ Jev S1: ${tokenReport.jevS1.totalTokens} tokens | 🤖 LLM S2: ${tokenReport.llmS2.totalTokens} tokens | Total: ${tokenReport.totalTokens} tokens\``
-			: '';
+async function runWithRetry<T>(
+	operation: () => Promise<T>,
+	settings: ModelExecutionSettings,
+	provider: ModelProvider,
+	signal?: AbortSignal,
+): Promise<T> {
+	let attempt = 1;
 
-		yield new ChatGenerationChunk({
-			text: statsBadge,
-			message: new AIMessageChunk({
-				content: statsBadge,
-				usage_metadata: {
-					input_tokens: tokenReport.jevS1.promptTokens + tokenReport.llmS2.promptTokens,
-					output_tokens: tokenReport.jevS1.completionTokens + tokenReport.llmS2.completionTokens,
-					total_tokens: tokenReport.totalTokens,
-				},
-				response_metadata: {
-					tokenUsage: {
-						promptTokens: tokenReport.jevS1.promptTokens + tokenReport.llmS2.promptTokens,
-						completionTokens: tokenReport.jevS1.completionTokens + tokenReport.llmS2.completionTokens,
-						totalTokens: tokenReport.totalTokens,
-					},
-					tokens: {
-						jev_s1: tokenReport.jevS1,
-						llm_s2: tokenReport.llmS2,
-						total: tokenReport.totalTokens,
-					},
-				},
-			}),
-		});
+	while (true) {
+		try {
+			return await operation();
+		} catch (error) {
+			const normalizedError = toUniversalModelError(error, provider);
+			if (
+				!settings.retryOnFail ||
+				attempt >= settings.maxTries ||
+				isAbortError(normalizedError, signal) ||
+				!isRetryableModelError(normalizedError, provider)
+			) {
+				normalizeModelError(normalizedError, provider).attempts = attempt;
+				throw normalizedError;
+			}
+
+			attempt += 1;
+			const retryAfterMs = retryAfterMsForModelError(normalizedError, provider);
+			await waitForRetry(
+				Math.max(settings.waitBetweenTries, Math.min(retryAfterMs ?? 0, 60_000)),
+				signal,
+			);
+		}
 	}
 }
+
+function errorDetails(error: unknown, provider: ModelProvider): NormalizedModelError {
+	return normalizeModelError(error, provider);
+}
+
+function continuedErrorMessage(error: unknown, provider: ModelProvider): AIMessage {
+	const normalizedError = toUniversalModelError(error, provider);
+	const details = errorDetails(normalizedError, provider);
+	return new AIMessage({
+		content: normalizedError.message,
+		additional_kwargs: {
+			universalChatModelError: details,
+		},
+		response_metadata: {
+			universalChatModelError: details,
+			onError: 'continueRegularOutput',
+		},
+	});
+}
+
+export function applyModelRetry(
+	model: BaseChatModel,
+	settings: ModelExecutionSettings,
+	provider: ModelProvider,
+): BaseChatModel {
+	const mutableModel = model as any;
+	const originalGenerate = mutableModel._generate.bind(mutableModel);
+
+	mutableModel._generate = async (...args: any[]) => {
+		const signal = args[1]?.signal as AbortSignal | undefined;
+		let result: any;
+		try {
+			result = await runWithRetry(
+				() => originalGenerate(...args),
+				settings,
+				provider,
+				signal,
+			);
+		} catch (error) {
+			const normalizedError = toUniversalModelError(error, provider);
+			if (
+				settings.onError !== 'continueRegularOutput' ||
+				isAbortError(normalizedError, signal)
+			) {
+				throw normalizedError;
+			}
+
+			const message = continuedErrorMessage(normalizedError, provider);
+			result = {
+				generations: [
+					{
+						text: message.text,
+						message,
+					},
+				],
+				llmOutput: {
+					universalChatModelError: errorDetails(normalizedError, provider),
+				},
+			};
+		}
+
+		if (
+			settings.alwaysOutputData &&
+			(!Array.isArray(result?.generations) || result.generations.length === 0)
+		) {
+			result.generations = [
+				{
+					text: '',
+					message: new AIMessage(''),
+				},
+			];
+		}
+
+		return result;
+	};
+
+	if (typeof mutableModel._streamResponseChunks === 'function') {
+		const originalStream = mutableModel._streamResponseChunks.bind(mutableModel);
+		mutableModel._streamResponseChunks = async function* (...args: any[]) {
+			const signal = args[1]?.signal as AbortSignal | undefined;
+			let attempt = 1;
+			let emittedAnyChunk = false;
+
+			while (true) {
+				let emittedChunk = false;
+				try {
+					for await (const chunk of originalStream(...args)) {
+						emittedChunk = true;
+						emittedAnyChunk = true;
+						yield chunk;
+					}
+
+					if (settings.alwaysOutputData && !emittedAnyChunk) {
+						yield new ChatGenerationChunk({
+							text: '',
+							message: new AIMessageChunk(''),
+						});
+					}
+
+					return;
+				} catch (error) {
+					const normalizedError = toUniversalModelError(error, provider);
+					if (isAbortError(normalizedError, signal) || emittedChunk) {
+						throw normalizedError;
+					}
+
+					if (
+						settings.retryOnFail &&
+						attempt < settings.maxTries &&
+						isRetryableModelError(normalizedError, provider)
+					) {
+						attempt += 1;
+						const retryAfterMs = retryAfterMsForModelError(normalizedError, provider);
+						await waitForRetry(
+							Math.max(settings.waitBetweenTries, Math.min(retryAfterMs ?? 0, 60_000)),
+							signal,
+						);
+						continue;
+					}
+
+					if (settings.onError === 'continueRegularOutput') {
+						const details = errorDetails(normalizedError, provider);
+						details.attempts = attempt;
+						yield new ChatGenerationChunk({
+							text: normalizedError.message,
+							message: new AIMessageChunk({
+								content: normalizedError.message,
+								additional_kwargs: {
+									universalChatModelError: details,
+								},
+								response_metadata: {
+									universalChatModelError: details,
+									onError: 'continueRegularOutput',
+								},
+							}),
+						});
+						return;
+					}
+
+					const details = normalizeModelError(normalizedError, provider);
+					details.attempts = attempt;
+					throw normalizedError;
+				}
+			}
+		};
+	}
+
+	return model;
+}
+
+export function applySystemMessage(
+	model: BaseChatModel,
+	systemMessage: string,
+): BaseChatModel {
+	const content = systemMessage.trim();
+	if (!content) return model;
+
+	const inject = (messages: BaseMessage[]): BaseMessage[] => {
+		const next = [...messages];
+		let systemCount = 0;
+		while (
+			systemCount < next.length &&
+			typeof (next[systemCount] as any)?._getType === 'function' &&
+			(next[systemCount] as any)._getType() === 'system'
+		) {
+			systemCount += 1;
+		}
+
+		const systemParts: Array<Record<string, unknown>> = [];
+		for (const message of next.slice(0, systemCount)) {
+			const existingContent = (message as any).content;
+			if (typeof existingContent === 'string' && existingContent.length > 0) {
+				systemParts.push({ type: 'text', text: existingContent });
+			} else if (Array.isArray(existingContent)) {
+				systemParts.push(...existingContent);
+			}
+		}
+		systemParts.push({ type: 'text', text: content });
+		next.splice(
+			0,
+			systemCount,
+			new SystemMessage({ content: systemParts } as any),
+		);
+		return next;
+	};
+
+	const mutableModel = model as any;
+	const originalGenerate = mutableModel._generate.bind(mutableModel);
+	mutableModel._generate = (messages: BaseMessage[], ...args: any[]) =>
+		originalGenerate(inject(messages), ...args);
+
+	if (typeof mutableModel._streamResponseChunks === 'function') {
+		const originalStream = mutableModel._streamResponseChunks.bind(mutableModel);
+		mutableModel._streamResponseChunks = (
+			messages: BaseMessage[],
+			...args: any[]
+		) => originalStream(inject(messages), ...args);
+	}
+
+	return model;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 5. JEV DUAL-ENGINE NODE DEFINITION
+// ─────────────────────────────────────────────────────────────
 
 export class JevDualEngine implements INodeType {
 	description: INodeTypeDescription = {
@@ -694,8 +1446,8 @@ export class JevDualEngine implements INodeType {
 		icon: 'file:jevDualEngine.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: '={{$parameter["model"] || "gemini-2.5-flash"}}',
-		description: 'Language Model com Raciocínio Deliberado Jev (System 1 sub-30ms) para AI Agents e Chains',
+		subtitle: '={{$parameter["provider"] === "gemini" ? ($parameter["geminiModelCustom"] || $parameter["geminiModel"]) : ($parameter["openaiModelCustom"] || $parameter["openaiModel"] || "llama3")}}',
+		description: 'Universal Chat Model com Raciocínio Deliberado Jev (System 1 sub-30ms), suporte nativo a Google Gemini e APIs Compatíveis com OpenAI / LLMs Locais (Ollama, LM Studio, DeepSeek, OpenRouter)',
 		defaults: {
 			name: 'Jev Dual-Engine Model',
 		},
@@ -712,13 +1464,32 @@ export class JevDualEngine implements INodeType {
 				],
 			},
 		},
-		inputs: [],
+		inputs:
+			'={{ (($parameter.provider === "gemini" && $parameter.geminiOptions && (($parameter.geminiOptions.usageReporter && $parameter.geminiOptions.usageReporter.settings && $parameter.geminiOptions.usageReporter.settings.enabled) || $parameter.geminiOptions.enableUsageReporter)) || ($parameter.provider === "openai_compatible" && $parameter.openaiOptions && (($parameter.openaiOptions.usageReporter && $parameter.openaiOptions.usageReporter.settings && $parameter.openaiOptions.usageReporter.settings.enabled) || $parameter.openaiOptions.enableUsageReporter)) || $parameter.enableUsageReporter) ? [{ type: "ai_tool", displayName: "Usage Reporter", required: false, maxConnections: 1 }] : [] }}',
 		outputs: [NodeConnectionTypes.AiLanguageModel],
 		outputNames: ['Model'],
 		credentials: [
 			{
+				name: 'googleGeminiApi',
+				required: false,
+				displayOptions: {
+					show: {
+						provider: ['gemini'],
+					},
+				},
+			},
+			{
+				name: 'openAiCompatibleApi',
+				required: false,
+				displayOptions: {
+					show: {
+						provider: ['openai_compatible'],
+					},
+				},
+			},
+			{
 				name: 'jevLlmApi',
-				required: true,
+				required: false,
 			},
 			{
 				name: 'jevApi',
@@ -726,41 +1497,108 @@ export class JevDualEngine implements INodeType {
 			},
 		],
 		properties: [
+			...(shouldExposeModelExecutionProperties()
+				? ([
+						{
+							displayName: 'Always Output Data',
+							name: 'alwaysOutputData',
+							type: 'boolean',
+							default: false,
+							noDataExpression: true,
+							isNodeSetting: true,
+							description: 'Mantém uma saída inspecionável mesmo quando o provedor retornar resposta vazia',
+						},
+						{
+							displayName: 'Execute Once',
+							name: 'executeOnce',
+							type: 'boolean',
+							default: false,
+							noDataExpression: true,
+							isNodeSetting: true,
+							description: 'Resolve a configuração do modelo apenas uma vez para todo o fluxo',
+						},
+						{
+							displayName: 'Retry On Fail',
+							name: 'retryOnFail',
+							type: 'boolean',
+							default: false,
+							noDataExpression: true,
+							isNodeSetting: true,
+							description: 'Tenta novamente de forma automática caso a requisição à API falhe',
+						},
+						{
+							displayName: 'Max Tries',
+							name: 'maxTries',
+							type: 'number',
+							typeOptions: {
+								minValue: 2,
+								maxValue: 5,
+								numberPrecision: 0,
+							},
+							default: 3,
+							noDataExpression: true,
+							isNodeSetting: true,
+							displayOptions: {
+								show: {
+									retryOnFail: [true],
+								},
+							},
+							description: 'Número máximo de tentativas antes de falhar',
+						},
+						{
+							displayName: 'Wait Between Tries (ms)',
+							name: 'waitBetweenTries',
+							type: 'number',
+							typeOptions: {
+								minValue: 0,
+								maxValue: 5000,
+								numberPrecision: 0,
+							},
+							default: 1000,
+							noDataExpression: true,
+							isNodeSetting: true,
+							displayOptions: {
+								show: {
+									retryOnFail: [true],
+								},
+							},
+							description: 'Tempo de espera em milissegundos entre cada tentativa',
+						},
+						{
+							displayName: 'On Error',
+							name: 'onError',
+							type: 'options',
+							options: [
+								{
+									name: 'Stop Workflow',
+									value: 'stopWorkflow',
+									description: 'Interrompe o fluxo e registra o erro',
+								},
+								{
+									name: 'Continue',
+									value: 'continueRegularOutput',
+									description: 'Repassa a mensagem de erro pela saída normal do modelo',
+								},
+								{
+									name: 'Continue (Using Error Output)',
+									value: 'continueErrorOutput',
+									description: 'Encaminha a falha para a saída de erro do nó',
+								},
+							],
+							default: 'stopWorkflow',
+							noDataExpression: true,
+							isNodeSetting: true,
+						},
+					] as INodeProperties[])
+				: []),
+
+			// ─── 0. CONFIGURAÇÕES EXCLUSIVAS JEV DUAL-ENGINE ───
 			{
-				displayName: 'Provedor da LLM (Override)',
-				name: 'providerOverride',
-				type: 'options',
-				options: [
-					{ name: 'Automático / Das Credenciais', value: 'from_cred' },
-					{ name: 'Google Gemini Oficial (OpenAI Endpoint)', value: 'gemini' },
-					{ name: 'OpenRouter (Gemma, Claude, Llama, Qwen)', value: 'openrouter' },
-					{ name: 'DeepInfra (Llama 3.1 / DeepSeek / Qwen)', value: 'deepinfra' },
-					{ name: 'OpenAI Oficial', value: 'openai' },
-					{ name: 'Custom Endpoint / Mac mini / Ollama Local', value: 'custom' },
-				],
-				default: 'from_cred',
-				description: 'Permite escolher o provedor ou detectar automaticamente a partir da credencial/chave',
-			},
-			{
-				displayName: 'Modelo da LLM',
-				name: 'model',
-				type: 'string',
-				default: 'gemini-2.5-flash',
-				description: 'Nome do modelo a ser chamado (ex: gemini-2.5-flash, gpt-4o, google/gemma-4-26b-a4b-it, ou qualquer modelo local no seu Mac mini/Ollama)',
-			},
-			{
-				displayName: 'Formatar Fórmulas para Chat (Sem LaTeX)',
-				name: 'cleanMath',
+				displayName: 'Ativar Raciocínio Sandwich Jev (System 1)',
+				name: 'enableSandwich',
 				type: 'boolean',
 				default: true,
-				description: 'Evita caracteres de código LaTeX ($ e \\) que quebram no chat do n8n, convertendo fórmulas para texto puro e símbolos Unicode legíveis (ex: x², ½, ∫, ∇)',
-			},
-			{
-				displayName: 'Exibir Estatísticas de Tokens no Chat',
-				name: 'showTokenStats',
-				type: 'boolean',
-				default: true,
-				description: 'Adiciona no rodapé da resposta do chat um badge com a contagem de tokens do Jev (System 1) e da LLM (System 2)',
+				description: 'Se ativo, o Jev executa dedução lógica analítica (<30ms) antes de enviar a instrução à LLM',
 			},
 			{
 				displayName: 'Estilo de Resposta (Verbosidade)',
@@ -781,117 +1619,604 @@ export class JevDualEngine implements INodeType {
 					},
 				],
 				default: 'concise',
+				displayOptions: {
+					show: {
+						enableSandwich: [true],
+					},
+				},
 				description: 'Controla a extensão e o direcionamento da síntese da resposta',
 			},
 			{
-				displayName: 'Temperatura',
-				name: 'temperature',
-				type: 'number',
-				typeOptions: {
-					minValue: 0,
-					maxValue: 1,
-					numberStepSize: 0.1,
-				},
-				default: 0.2,
-				description: 'Valores menores geram respostas mais determinísticas e focadas',
-			},
-			{
-				displayName: 'Máximo de Tokens de Saída',
-				name: 'maxTokens',
-				type: 'number',
-				default: 4096,
-				description: 'Limite máximo de tokens gerados pela LLM',
-			},
-			{
-				displayName: 'Ativar Raciocínio Sandwich (System 1)',
-				name: 'enableSandwich',
+				displayName: 'Formatar Fórmulas para Chat (Sem LaTeX)',
+				name: 'cleanMath',
 				type: 'boolean',
 				default: true,
-				description: 'Se ativo, o Jev executa dedução lógica deliberada sub-30ms antes de delegar para a LLM',
+				description: 'Evita caracteres LaTeX ($ e \\) que quebram no chat do n8n, convertendo fórmulas para texto puro e símbolos Unicode naturais (ex: x², ½, ∫, ∇)',
 			},
-		],
+			{
+				displayName: 'Exibir Estatísticas de Tokens no Chat',
+				name: 'showTokenStats',
+				type: 'boolean',
+				default: true,
+				description: 'Adiciona no rodapé da mensagem do chat um badge discreto com os tokens gastos pelo Jev (System 1) e pela LLM (System 2)',
+			},
+
+			// ─── 1. SELEÇÃO DE PROVEDOR ───
+			{
+				displayName: 'Provedor da LLM (System 2)',
+				name: 'provider',
+				type: 'options',
+				options: [
+					{
+						name: 'Google Gemini Oficial (SDK Nativo / AI Studio)',
+						value: 'gemini',
+						description: 'Google Gemini 2.5 Flash, 3.5 Flash, 3.1 Pro com controle de Thinking e Schemas',
+					},
+					{
+						name: 'OpenAI Compatible / Local LLM / DeepSeek / Ollama / Mac mini',
+						value: 'openai_compatible',
+						description: 'Qualquer endpoint HTTP compatível (Ollama, LM Studio, vLLM, DeepSeek, OpenRouter)',
+					},
+				],
+				default: 'gemini',
+				description: 'Selecione o provedor de inteligência artificial',
+			},
+
+			// ─── 2. GOOGLE GEMINI (NATIVO) ───
+			{
+				displayName: 'Model Name',
+				name: 'geminiModel',
+				type: 'options',
+				displayOptions: { show: { provider: ['gemini'] } },
+				typeOptions: { loadOptionsMethod: 'getGeminiModels' },
+				default: 'gemini-2.5-flash',
+				description: 'Selecione o modelo Gemini carregado dinamicamente ou defina um Custom Model ID abaixo',
+			},
+			{
+				displayName: 'Custom Model ID (Override)',
+				name: 'geminiModelCustom',
+				type: 'string',
+				displayOptions: { show: { provider: ['gemini'] } },
+				default: '',
+				placeholder: 'ex: gemini-2.5-flash, gemini-3.5-flash-lite',
+				description: 'ID de modelo customizado (se preenchido, sobrepõe a seleção do dropdown)',
+			},
+			{
+				displayName: 'Opções do Gemini',
+				name: 'geminiOptions',
+				type: 'collection',
+				placeholder: 'Adicionar Opção',
+				default: {},
+				displayOptions: { show: { provider: ['gemini'] } },
+				options: [
+					{
+						displayName: 'Temperatura',
+						name: 'temperature',
+						type: 'number',
+						typeOptions: { minValue: 0.0, maxValue: 2.0, numberPrecision: 2 },
+						default: 0.2,
+						description: 'Controla a aleatoriedade (0.0 mais determinístico, 2.0 mais criativo)',
+					},
+					{
+						displayName: 'Top P',
+						name: 'topP',
+						type: 'number',
+						typeOptions: { minValue: 0.0, maxValue: 1.0, numberPrecision: 2 },
+						default: 0.95,
+					},
+					{
+						displayName: 'Top K',
+						name: 'topK',
+						type: 'number',
+						default: 40,
+					},
+					{
+						displayName: 'Máximo de Tokens de Saída',
+						name: 'maxOutputTokens',
+						type: 'number',
+						default: 8192,
+					},
+					{
+						displayName: 'Response MIME Type',
+						name: 'responseMimeType',
+						type: 'options',
+						options: [
+							{ name: 'Text (text/plain)', value: 'text/plain' },
+							{ name: 'JSON (application/json)', value: 'application/json' },
+						],
+						default: 'text/plain',
+					},
+					{
+						displayName: 'Structured Output Schema (JSON)',
+						name: 'responseSchema',
+						type: 'string',
+						typeOptions: { rows: 8 },
+						default: '',
+						placeholder: '{\n  "type": "object",\n  "properties": {\n    "message": { "type": "string" }\n  }\n}',
+						description: 'JSON Schema estrito para estruturar a resposta do Gemini',
+					},
+					{
+						displayName: 'Thinking Level (Gemini 3+)',
+						name: 'thinkingLevel',
+						type: 'options',
+						options: [
+							{ name: 'MINIMAL', value: 'MINIMAL' },
+							{ name: 'LOW', value: 'LOW' },
+							{ name: 'MEDIUM', value: 'MEDIUM' },
+							{ name: 'HIGH', value: 'HIGH' },
+						],
+						default: 'MEDIUM',
+						description: 'Profundidade de raciocínio para modelos Gemini 3+',
+					},
+					{
+						displayName: 'Thinking Budget (Gemini 2.5)',
+						name: 'thinkingBudget',
+						type: 'number',
+						typeOptions: { minValue: -1, numberPrecision: 0 },
+						default: -1,
+						description: 'Orçamento de tokens de raciocínio (-1 = dinâmico, 0 = desativado)',
+					},
+					{
+						displayName: 'Include Thoughts',
+						name: 'includeThoughts',
+						type: 'boolean',
+						default: false,
+						description: 'Expõe os pensamentos do Gemini nos metadados do n8n',
+					},
+					{
+						displayName: 'Model Request Timeout (ms)',
+						name: 'requestTimeoutMs',
+						type: 'number',
+						default: 60000,
+						typeOptions: {
+							minValue: 0,
+							maxValue: 900000,
+							numberStepSize: 1000,
+						},
+						description: 'Timeout máximo para cada requisição ao Gemini em milissegundos',
+					},
+					{
+						displayName: 'Recover Empty Final Responses',
+						name: 'recoverEmptyResponses',
+						type: 'boolean',
+						default: true,
+						description: 'Recupera automaticamente requisições que retornam vazias com status STOP',
+					},
+					...sharedModelOptions(),
+				],
+			},
+
+			// ─── 3. OPENAI / LOCAL LLM / OLLAMA / MAC MINI ───
+			{
+				displayName: 'Model Name / ID',
+				name: 'openaiModel',
+				type: 'options',
+				typeOptions: {
+					loadOptionsMethod: 'getOpenAiModels',
+				},
+				displayOptions: { show: { provider: ['openai_compatible'] } },
+				default: 'llama3',
+				description: 'Modelo carregado dinamicamente do endpoint local ou remoto',
+			},
+			{
+				displayName: 'Custom Model ID (Override)',
+				name: 'openaiModelCustom',
+				type: 'string',
+				displayOptions: { show: { provider: ['openai_compatible'] } },
+				default: '',
+				placeholder: 'ex: google/gemma-4-26b-a4b, deepseek-r1:70b, gpt-4o, llama3:8b',
+				description: 'Sobrescreve o modelo com qualquer string livre (essencial para Mac mini, Ollama e LM Studio)',
+			},
+			{
+				displayName: 'Opções OpenAI / Local LLM',
+				name: 'openaiOptions',
+				type: 'collection',
+				placeholder: 'Adicionar Opção',
+				default: {},
+				displayOptions: { show: { provider: ['openai_compatible'] } },
+				options: [
+					{
+						displayName: 'Temperatura',
+						name: 'temperature',
+						type: 'number',
+						typeOptions: { minValue: 0.0, maxValue: 2.0, numberPrecision: 2 },
+						default: 0.2,
+					},
+					{
+						displayName: 'Reasoning Effort',
+						name: 'reasoningEffort',
+						type: 'options',
+						options: [
+							{ name: 'None / Default', value: 'none' },
+							{ name: 'Low', value: 'low' },
+							{ name: 'Medium', value: 'medium' },
+							{ name: 'High', value: 'high' },
+						],
+						default: 'none',
+						description: 'Para modelos com raciocínio profundo como DeepSeek-R1 e OpenAI o1/o3-mini',
+					},
+					{
+						displayName: 'Frequency Penalty',
+						name: 'frequencyPenalty',
+						type: 'number',
+						typeOptions: { minValue: -2.0, maxValue: 2.0, numberPrecision: 2 },
+						default: 0,
+					},
+					{
+						displayName: 'Presence Penalty',
+						name: 'presencePenalty',
+						type: 'number',
+						typeOptions: { minValue: -2.0, maxValue: 2.0, numberPrecision: 2 },
+						default: 0,
+					},
+					{
+						displayName: 'Máximo de Tokens de Saída',
+						name: 'maxTokens',
+						type: 'number',
+						default: 4096,
+					},
+					{
+						displayName: 'Seed',
+						name: 'seed',
+						type: 'number',
+						default: 0,
+						description: 'Gera saídas determinísticas se o backend suportar',
+					},
+					{
+						displayName: 'JSON Mode',
+						name: 'jsonMode',
+						type: 'boolean',
+						default: false,
+						description: 'Força o retorno no formato JSON (response_format: { type: "json_object" })',
+					},
+					{
+						displayName: 'Custom Headers (JSON)',
+						name: 'customHeaders',
+						type: 'string',
+						typeOptions: { rows: 3 },
+						default: '',
+						placeholder: '{"HTTP-Referer": "https://n8n.io", "X-Title": "n8n Jev"}',
+						description: 'Headers HTTP extras em formato JSON (ex: metadados para OpenRouter)',
+					},
+					...sharedModelOptions(),
+				],
+			},
+		] as INodeProperties[],
+	};
+
+	methods = {
+		loadOptions: {
+			async getGeminiModels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				let apiKey = '';
+				try {
+					const creds = await this.getCredentials('googleGeminiApi');
+					if (creds && typeof creds.apiKey === 'string') apiKey = creds.apiKey.trim();
+				} catch {}
+				if (!apiKey) {
+					try {
+						const creds = await this.getCredentials('jevLlmApi');
+						if (creds && typeof creds.apiKey === 'string') apiKey = creds.apiKey.trim();
+					} catch {}
+				}
+
+				const defaultModels: INodePropertyOptions[] = [
+					{ name: 'Gemini 2.5 Flash', value: 'gemini-2.5-flash' },
+					{ name: 'Gemini 3.5 Flash', value: 'gemini-3.5-flash' },
+					{ name: 'Gemini 3.5 Flash Lite', value: 'gemini-3.5-flash-lite' },
+					{ name: 'Gemini 3.1 Pro', value: 'gemini-3.1-pro' },
+					{ name: 'Gemini 2.0 Flash', value: 'gemini-2.0-flash' },
+				];
+
+				if (!apiKey) return defaultModels;
+
+				try {
+					const response = await this.helpers.httpRequest({
+						method: 'GET',
+						url: 'https://generativelanguage.googleapis.com/v1beta/models',
+						headers: { 'x-goog-api-key': apiKey },
+						json: true,
+					});
+					if (response && Array.isArray(response.models)) {
+						const options: INodePropertyOptions[] = [];
+						for (const m of response.models) {
+							if (m.name && typeof m.name === 'string') {
+								const modelId = m.name.replace(/^models\//, '');
+								const methods = m.supportedGenerationMethods;
+								if (!methods || (Array.isArray(methods) && methods.includes('generateContent'))) {
+									const label = m.displayName ? `${m.displayName} (${modelId})` : modelId;
+									options.push({ name: label, value: modelId });
+								}
+							}
+						}
+						if (options.length > 0) return options;
+					}
+				} catch {}
+				return defaultModels;
+			},
+
+			async getOpenAiModels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				let baseUrl = 'http://localhost:11434/v1';
+				let apiKey = 'not-needed';
+				try {
+					const creds = await this.getCredentials('openAiCompatibleApi');
+					if (creds && typeof creds.baseUrl === 'string' && creds.baseUrl.trim()) {
+						baseUrl = creds.baseUrl.trim();
+					}
+					if (creds && typeof creds.apiKey === 'string' && creds.apiKey.trim()) {
+						apiKey = creds.apiKey.trim();
+					}
+				} catch {}
+				if (baseUrl === 'http://localhost:11434/v1' && apiKey === 'not-needed') {
+					try {
+						const creds = await this.getCredentials('jevLlmApi');
+						if (creds && typeof creds.customBaseUrl === 'string' && creds.customBaseUrl.trim()) {
+							baseUrl = creds.customBaseUrl.trim();
+						}
+						if (creds && typeof creds.customApiKey === 'string' && creds.customApiKey.trim()) {
+							apiKey = creds.customApiKey.trim();
+						} else if (creds && typeof creds.apiKey === 'string' && creds.apiKey.trim()) {
+							apiKey = creds.apiKey.trim();
+						}
+					} catch {}
+				}
+
+				baseUrl = baseUrl.replace(/\/+$/, '');
+				const defaultModels: INodePropertyOptions[] = [
+					{ name: 'llama3', value: 'llama3' },
+					{ name: 'deepseek-r1', value: 'deepseek-r1' },
+					{ name: 'google/gemma-4-26b-a4b', value: 'google/gemma-4-26b-a4b' },
+					{ name: 'qwen2.5', value: 'qwen2.5' },
+					{ name: 'gpt-4o', value: 'gpt-4o' },
+					{ name: 'claude-3-5-sonnet', value: 'claude-3-5-sonnet' },
+				];
+
+				const headers: Record<string, string> = {};
+				if (apiKey && apiKey !== 'not-needed') {
+					headers['Authorization'] = `Bearer ${apiKey}`;
+				}
+
+				try {
+					const modelsUrl = baseUrl.endsWith('/v1') ? `${baseUrl}/models` : `${baseUrl}/v1/models`;
+					const response = await this.helpers.httpRequest({ method: 'GET', url: modelsUrl, headers, json: true });
+					const rawList = response?.data || response?.models || (Array.isArray(response) ? response : null);
+					if (Array.isArray(rawList) && rawList.length > 0) {
+						return rawList.map((m: any) => {
+							const modelId = typeof m === 'string' ? m : (m.id || m.name || JSON.stringify(m));
+							return { name: String(modelId), value: String(modelId) };
+						});
+					}
+				} catch {
+					try {
+						const rootUrl = baseUrl.replace(/\/v1$/, '');
+						const ollamaResp = await this.helpers.httpRequest({ method: 'GET', url: `${rootUrl}/api/tags`, headers, json: true });
+						if (ollamaResp && Array.isArray(ollamaResp.models) && ollamaResp.models.length > 0) {
+							return ollamaResp.models.map((m: any) => {
+								const name = m.name || m.model || JSON.stringify(m);
+								return { name: String(name), value: String(name) };
+							});
+						}
+					} catch {}
+				}
+
+				return defaultModels;
+			},
+		},
 	};
 
 	async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
-		let llmCreds: any = {};
-		try {
-			llmCreds = await this.getCredentials('jevLlmApi');
-		} catch (err: any) {
-			throw new NodeOperationError(this.getNode(), 'Credencial "LLM System 2 API" é necessária para o nó de modelo Jev.');
-		}
+		const executionSettings = getModelExecutionSettings(this, itemIndex);
+		const executionItemIndex = executionSettings.executeOnce ? 0 : itemIndex;
+		const provider = this.getNodeParameter('provider', executionItemIndex, 'gemini') as 'gemini' | 'openai_compatible';
 
-		// Respeita exatamente o que o usuário digitar
-		const modelName = this.getNodeParameter('model', itemIndex, 'gemini-2.5-flash') as string;
-		const providerOverride = this.getNodeParameter('providerOverride', itemIndex, 'from_cred') as string;
-		const cleanMath = this.getNodeParameter('cleanMath', itemIndex, true) as boolean;
-		const showTokenStats = this.getNodeParameter('showTokenStats', itemIndex, true) as boolean;
-		const temperature = this.getNodeParameter('temperature', itemIndex, 0.2) as number;
-		const maxTokens = this.getNodeParameter('maxTokens', itemIndex, 4096) as number;
-		const verbosity = this.getNodeParameter('verbosity', itemIndex, 'concise') as 'concise' | 'balanced' | 'detailed';
-		const enableSandwich = this.getNodeParameter('enableSandwich', itemIndex, true) as boolean;
+		// Jev Dual-Engine specific settings
+		const enableSandwich = this.getNodeParameter('enableSandwich', executionItemIndex, true) as boolean;
+		const verbosity = this.getNodeParameter('verbosity', executionItemIndex, 'concise') as 'concise' | 'balanced' | 'detailed';
+		const cleanMath = this.getNodeParameter('cleanMath', executionItemIndex, true) as boolean;
+		const showTokenStats = this.getNodeParameter('showTokenStats', executionItemIndex, true) as boolean;
 
-		let provider = providerOverride !== 'from_cred' ? providerOverride : (llmCreds.provider || 'gemini');
-		let apiKey = llmCreds.apiKey || '';
-		let baseURL = 'https://api.openai.com/v1';
-		let defaultHeaders: Record<string, string> | undefined = undefined;
-
-		// Detecção inteligente de provedor (tolerância a falhas):
-		// 1. Chaves OpenRouter começam com 'sk-or-'
-		if (apiKey.startsWith('sk-or-')) {
-			provider = 'openrouter';
-		}
-		// 2. Modelos com barra e provedor gemini pertencem ao OpenRouter ou DeepInfra
-		else if (provider === 'gemini' && modelName.includes('/')) {
-			provider = 'openrouter';
-		}
+		const jevConfig: JevConfig = {
+			enableSandwich,
+			verbosity,
+			cleanMath,
+			showTokenStats,
+		};
 
 		if (provider === 'gemini') {
-			baseURL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
-			if (!apiKey) {
-				apiKey = process.env.GEMINI_API_KEY || '';
+			let geminiApiKey = '';
+			try {
+				const creds = await this.getCredentials('googleGeminiApi');
+				if (creds && typeof creds.apiKey === 'string') geminiApiKey = creds.apiKey.trim();
+			} catch {}
+			if (!geminiApiKey) {
+				try {
+					const creds = await this.getCredentials('jevLlmApi');
+					if (creds && typeof creds.apiKey === 'string') geminiApiKey = creds.apiKey.trim();
+				} catch {}
 			}
-			if (!apiKey) {
-				throw new NodeOperationError(this.getNode(), 'Chave de API do Google Gemini não configurada nas credenciais jevLlmApi.');
+			if (!geminiApiKey && process.env.GEMINI_API_KEY) {
+				geminiApiKey = process.env.GEMINI_API_KEY.trim();
 			}
-		} else if (provider === 'deepinfra') {
-			baseURL = 'https://api.deepinfra.com/v1/openai';
-		} else if (provider === 'openrouter') {
-			baseURL = 'https://openrouter.ai/api/v1';
-			defaultHeaders = {
-				'HTTP-Referer': 'https://n8n.io',
-				'X-Title': 'n8n Jev Dual-Engine',
+			if (!geminiApiKey) {
+				throw new NodeOperationError(
+					this.getNode(),
+					'Chave de API do Google Gemini não encontrada. Configure a credencial "Google Gemini API" ou "LLM System 2 API".',
+				);
+			}
+
+			let geminiModel = this.getNodeParameter('geminiModel', executionItemIndex, 'gemini-2.5-flash') as string;
+			const customModel = this.getNodeParameter('geminiModelCustom', executionItemIndex, '') as string;
+			if (customModel.trim()) geminiModel = customModel.trim();
+
+			const opts = this.getNodeParameter('geminiOptions', executionItemIndex, {}) as Record<string, any>;
+			const sharedOptions = resolveSharedModelOptions(this, opts);
+
+			const thinkingConfig: Record<string, unknown> = {};
+			if (opts.thinkingLevel !== undefined && opts.thinkingBudget !== undefined) {
+				throw new NodeOperationError(this.getNode(), 'Escolha Thinking Level (Gemini 3+) ou Thinking Budget (Gemini 2.5), não ambos.');
+			}
+			if (opts.thinkingLevel !== undefined) {
+				thinkingConfig.thinkingLevel = opts.thinkingLevel;
+			}
+			if (opts.thinkingBudget !== undefined) {
+				thinkingConfig.thinkingBudget = opts.thinkingBudget;
+			}
+			const shouldIncludeThoughts = opts.includeThoughts === true;
+			if (shouldIncludeThoughts) {
+				thinkingConfig.includeThoughts = true;
+			}
+
+			let responseMimeType = opts.responseMimeType;
+			let responseSchema: Record<string, unknown> | undefined;
+			if (typeof opts.responseSchema === 'string' && opts.responseSchema.trim().length > 0) {
+				try {
+					const parsed = JSON.parse(opts.responseSchema);
+					if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)) {
+						responseSchema = parsed;
+					}
+				} catch (err: any) {
+					throw new NodeOperationError(this.getNode(), `JSON inválido em Structured Output Schema: ${err.message}`);
+				}
+			} else if (opts.responseSchema && typeof opts.responseSchema === 'object' && !Array.isArray(opts.responseSchema)) {
+				responseSchema = opts.responseSchema;
+			}
+			if (responseSchema) responseMimeType = 'application/json';
+
+			const modelInput: Record<string, unknown> = {
+				apiKey: geminiApiKey,
+				model: geminiModel,
+				maxRetries: 0,
+				recoverEmptyResponses: opts.recoverEmptyResponses !== false,
+				requestTimeoutMs: opts.requestTimeoutMs ?? 60_000,
 			};
-		} else if (provider === 'openai') {
-			baseURL = 'https://api.openai.com/v1';
-			if (!apiKey) {
-				apiKey = process.env.OPENAI_API_KEY || '';
+
+			const usageReporter = await createUsageReporter(this, executionItemIndex, geminiModel, sharedOptions);
+			modelInput.callbacks = [
+				new UniversalChatModelTracing(
+					this,
+					'gemini',
+					shouldIncludeThoughts,
+					sharedOptions.includeTokenUsageInAgentOutput === true,
+					sharedOptions.includeIntermediateStepsInOutput === true,
+					usageReporter,
+					sharedOptions.failOnReporterError === true,
+				),
+			];
+
+			if (opts.temperature !== undefined) modelInput.temperature = opts.temperature;
+			if (opts.topP !== undefined) modelInput.topP = opts.topP;
+			if (opts.topK !== undefined) modelInput.topK = opts.topK;
+			if (opts.maxOutputTokens !== undefined) modelInput.maxOutputTokens = opts.maxOutputTokens;
+			if (responseMimeType !== undefined) modelInput.responseMimeType = responseMimeType;
+			if (responseSchema !== undefined) modelInput.responseSchema = responseSchema;
+			if (Object.keys(thinkingConfig).length > 0) modelInput.thinkingConfig = thinkingConfig;
+
+			let model: BaseChatModel = new GeminiChatModel(modelInput, (usage) => {
+				this.logAiEvent('ai-tokens-usage' as any, formatGeminiUsage(usage));
+			});
+
+			model = applySystemMessage(model, sharedOptions.systemMessage ?? '');
+			model = applyJevDualEngine(model, jevConfig);
+
+			return {
+				response: applyModelRetry(model, executionSettings, 'gemini'),
+			};
+		} else {
+			// ─── OPENAI COMPATIBLE / LOCAL LLM / DEEPSEEK / OLLAMA ───
+			let baseUrl = 'http://localhost:11434/v1';
+			let openaiApiKey = 'not-needed';
+			try {
+				const creds = await this.getCredentials('openAiCompatibleApi');
+				if (creds && typeof creds.baseUrl === 'string' && creds.baseUrl.trim()) {
+					baseUrl = creds.baseUrl.trim();
+				}
+				if (creds && typeof creds.apiKey === 'string' && creds.apiKey.trim()) {
+					openaiApiKey = creds.apiKey.trim();
+				}
+			} catch {}
+
+			if (baseUrl === 'http://localhost:11434/v1' && openaiApiKey === 'not-needed') {
+				try {
+					const creds = await this.getCredentials('jevLlmApi');
+					if (creds && typeof creds.customBaseUrl === 'string' && creds.customBaseUrl.trim()) {
+						baseUrl = creds.customBaseUrl.trim();
+					}
+					if (creds && typeof creds.customApiKey === 'string' && creds.customApiKey.trim()) {
+						openaiApiKey = creds.customApiKey.trim();
+					} else if (creds && typeof creds.apiKey === 'string' && creds.apiKey.trim()) {
+						openaiApiKey = creds.apiKey.trim();
+					}
+				} catch {}
 			}
-		} else if (provider === 'custom') {
-			baseURL = (llmCreds.customBaseUrl || 'http://localhost:11434/v1').replace(/\/+$/, '');
-			apiKey = llmCreds.customApiKey || apiKey || 'ollama';
-		}
+			baseUrl = baseUrl.replace(/\/+$/, '');
 
-		const model = new JevChatModel(
-			{
-				model: modelName,
-				temperature,
-				maxTokens: maxTokens > 0 ? maxTokens : undefined,
-				apiKey,
+			let openaiModel = this.getNodeParameter('openaiModel', executionItemIndex, 'llama3') as string;
+			const customModel = this.getNodeParameter('openaiModelCustom', executionItemIndex, '') as string;
+			if (customModel.trim()) openaiModel = customModel.trim();
+
+			const opts = this.getNodeParameter('openaiOptions', executionItemIndex, {}) as Record<string, any>;
+			const sharedOptions = resolveSharedModelOptions(this, opts);
+
+			let parsedHeaders: Record<string, string> = {};
+			if (opts.customHeaders && opts.customHeaders.trim().length > 0) {
+				try {
+					parsedHeaders = JSON.parse(opts.customHeaders);
+				} catch (error: any) {
+					throw new NodeOperationError(this.getNode(), `JSON inválido em Custom Headers: ${error.message}`);
+				}
+			}
+
+			// Header default para OpenRouter se aplicável
+			if (baseUrl.includes('openrouter.ai') && !parsedHeaders['HTTP-Referer']) {
+				parsedHeaders['HTTP-Referer'] = 'https://n8n.io';
+				parsedHeaders['X-Title'] = 'n8n Jev Dual-Engine';
+			}
+
+			const modelKwargs: Record<string, unknown> = {};
+			const reasoningEffort = opts.reasoningEffort || 'none';
+			if (opts.jsonMode === true) {
+				modelKwargs.response_format = { type: 'json_object' };
+			}
+
+			const modelOptions: Record<string, any> = {
+				apiKey: openaiApiKey,
+				modelName: openaiModel,
+				model: openaiModel,
+				callbacks: [],
 				configuration: {
-					baseURL,
-					defaultHeaders,
+					baseURL: baseUrl,
+					defaultHeaders: parsedHeaders,
 				},
-			},
-			{
-				verbosity,
-				enableSandwich,
-				cleanMath,
-				showTokenStats,
-			},
-		);
+				modelKwargs,
+				maxRetries: 0,
+			};
 
-		return {
-			response: model,
-		};
+			const usageReporter = await createUsageReporter(this, executionItemIndex, openaiModel, sharedOptions);
+			modelOptions.callbacks = [
+				new UniversalChatModelTracing(
+					this,
+					'openai_compatible',
+					false,
+					sharedOptions.includeTokenUsageInAgentOutput === true,
+					sharedOptions.includeIntermediateStepsInOutput === true,
+					usageReporter,
+					sharedOptions.failOnReporterError === true,
+				),
+			];
+
+			if (opts.temperature !== undefined) modelOptions.temperature = opts.temperature;
+			if (opts.maxTokens !== undefined) modelOptions.maxTokens = opts.maxTokens;
+			if (opts.frequencyPenalty !== undefined) modelOptions.frequencyPenalty = opts.frequencyPenalty;
+			if (opts.presencePenalty !== undefined) modelOptions.presencePenalty = opts.presencePenalty;
+			if (opts.seed !== undefined && !isNaN(Number(opts.seed))) modelOptions.seed = Number(opts.seed);
+			if (reasoningEffort !== 'none') modelOptions.reasoningEffort = reasoningEffort;
+
+			let model: BaseChatModel = new ChatOpenAI(modelOptions);
+			model = applySystemMessage(model, sharedOptions.systemMessage ?? '');
+			model = applyJevDualEngine(model, jevConfig);
+
+			return {
+				response: applyModelRetry(model, executionSettings, 'openai_compatible'),
+			};
+		}
 	}
 }
