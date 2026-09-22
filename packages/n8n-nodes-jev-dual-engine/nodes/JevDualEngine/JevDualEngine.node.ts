@@ -32,7 +32,7 @@ export interface JevSimulationResult {
 }
 
 export function localJevSimulate(prompt: string): JevSimulationResult {
-	const p = (prompt || '').toLowerCase();
+	const p = (prompt || '').toLowerCase().trim();
 	const startTime = Date.now();
 
 	let intent = 'chat';
@@ -98,32 +98,41 @@ export function localJevSimulate(prompt: string): JevSimulationResult {
 	let constraints: string[] = [];
 	let executionSteps: string[] = [];
 
-	if (intent === 'code_engineering') {
-		coreDeduction = `Problema requer implementação em ${techDomain}. O código deve ser idiomático, com tipagem estrita, modularizado e com tratamento explícito de falhas e edge cases.`;
+	const isGreeting = /^(oi|olá|ola|e aí|e ai|opa|bom dia|boa tarde|boa noite|hello|hi|hey|teste|test)\b/i.test(p) || (intent === 'chat' && len < 30);
+
+	if (isGreeting) {
+		coreDeduction = 'Saudação ou interação conversacional. Responder com cordialidade natural e prontidão, colocando-se à disposição para ajudar.';
+		constraints = [
+			'Tom prestativo, direto e profissional',
+			'Sem preâmbulos vazios, formalismos robóticos ou citações a estruturas internas',
+		];
+		executionSteps = [
+			'Cumprimentar o usuário cordialmente',
+			'Perguntar ou se dispor a resolver a demanda',
+		];
+	} else if (intent === 'code_engineering') {
+		coreDeduction = `Demanda requer implementação em ${techDomain}. O código deve ser idiomático, com tipagem estrita, modularizado e com tratamento explícito de falhas.`;
 		constraints = [
 			'Tipagem estrita sem o uso de any desnecessário',
 			'Código autocontido e pronto para execução sem dependências ocultas',
-			'Nomes de variáveis intencionais e sem abreviações obscuras',
 			'Tratamento preventivo de edge cases e entradas nulas',
 		];
 		executionSteps = [
-			'1. Definir os tipos, interfaces e contratos de dados essenciais',
-			'2. Implementar a lógica central com validação de entrada',
-			'3. Adicionar controle de erros e tratamento de exceções',
-			'4. Apresentar exemplo de consumo funcional',
+			'1. Definir os tipos, interfaces e contratos essenciais',
+			'2. Implementar a lógica central com validação defensiva',
+			'3. Apresentar exemplo de uso prático',
 		];
 	} else if (intent === 'security_critical') {
-		coreDeduction = 'Operação com potencial de risco à integridade de dados ou segurança. O plano deve conter salvaguardas explícitas, idempotência e verificação antes de qualquer mutação.';
+		coreDeduction = 'Operação com potencial de risco à integridade de dados ou segurança. Exige salvaguardas explícitas, idempotência e verificação antes de qualquer mutação.';
 		constraints = [
 			'Princípio do menor privilégio',
-			'Não expor segredos, tokens ou dados sensíveis em logs',
+			'Não expor segredos, tokens ou dados sensíveis',
 			'Validação estrita de limites de entrada',
 		];
 		executionSteps = [
-			'1. Avaliar superfície de risco e vetor de ameaça',
+			'1. Avaliar superfície de risco',
 			'2. Estabelecer guardrails de contenção',
-			'3. Executar o procedimento de forma transacional e reversível',
-			'4. Auditar o resultado final',
+			'3. Executar o procedimento de forma reversível e segura',
 		];
 	} else if (intent === 'architecture_planning') {
 		coreDeduction = 'Demanda planejamento de arquitetura com separação clara de responsabilidades, escalabilidade e desacoplamento de componentes.';
@@ -133,13 +142,12 @@ export function localJevSimulate(prompt: string): JevSimulationResult {
 			'Definir contratos de comunicação claros',
 		];
 		executionSteps = [
-			'1. Mapear entidades fundamentais e limites de contexto',
-			'2. Desenhar fluxo de dados e interfaces de integração',
-			'3. Identificar potenciais gargalos e pontos únicos de falha',
-			'4. Resumir o plano de evolução por marcos objetivos',
+			'1. Mapear limites de contexto e fronteiras de domínio',
+			'2. Desenhar fluxo de integração e interfaces',
+			'3. Resumir o plano de evolução por marcos objetivos',
 		];
 	} else {
-		coreDeduction = 'Consulta de conhecimento e raciocínio analítico. Exige resposta estruturada, premissas fundamentadas e ausência de preâmbulos genéricos.';
+		coreDeduction = 'Consulta conceitual e prática. Exige resposta estruturada, assertiva e fundamentada.';
 		constraints = [
 			'Fundamentação objetiva e factual',
 			'Clareza conceitual sem redundâncias',
@@ -227,31 +235,34 @@ export class JevChatModel extends ChatOpenAI {
 		let verbosityDirective = '';
 		const verbosity = this.jevConfig.verbosity || 'concise';
 		if (verbosity === 'concise') {
-			verbosityDirective = 'DIRETIVA DE CONCISÃO: Responda de forma direta e concisa. Elimine preâmbulos, saudações ou explicações dispensáveis. Foque estritamente na execução da ferramenta ou solução técnica.';
+			verbosityDirective = 'DIRETIVA: Responda de forma direta e concisa. Elimine saudações vazias e prolixidade. Vá direto ao ponto ou código.';
 		} else if (verbosity === 'balanced') {
-			verbosityDirective = 'DIRETIVA DE ESTILO EQUILIBRADO: Responda de forma técnica moderada, combinando o plano deliberado com código e explicações claras.';
+			verbosityDirective = 'DIRETIVA: Responda de forma profissional e equilibrada, combinando o plano deliberado com código e explicações claras.';
 		} else {
-			verbosityDirective = 'DIRETIVA DE ESTILO DETALHADO: Responda de forma aprofundada, didática e conceitual.';
+			verbosityDirective = 'DIRETIVA: Responda de forma aprofundada, didática e conceitual.';
 		}
 
-		const sandwichContract = `[JEV SYSTEM 1 - DELIBERATIVE REASONING CONTRACT]
-DEDUÇÃO LÓGICA DO JEV:
-${jevDecision.core_deduction}
+		const isGreeting = /^(oi|olá|ola|e aí|e ai|opa|bom dia|boa tarde|boa noite|hello|hi|hey|teste|test)\b/i.test(promptText.trim()) ||
+			(jevDecision.intent === 'chat' && promptText.length < 30);
 
-RESTRIÇÕES DETERMINADAS PELO JEV:
-${jevDecision.constraints.map((c) => '- ' + c).join('\n')}
-
-PLANO DE EXECUÇÃO CALCULADO PELO JEV:
-${jevDecision.execution_steps.join('\n')}
-
-DOMÍNIO: ${jevDecision.domain}
-COMPLEXIDADE: ${jevDecision.complexity_label} (Nível ${jevDecision.complexity_score}/5)
-LATÊNCIA ESTIMADA S1: ${jevDecision.latency_s1_ms}ms
-
+		let sandwichContract = '';
+		if (isGreeting) {
+			sandwichContract = `[DIRETRIZ JEV REASONING]: Interação conversacional direta. Responda com cordialidade natural e prontidão, sem jargões ou estruturas mecânicas.`;
+		} else {
+			sandwichContract = `[JEV REASONING CONTEXT & GUIDELINES]
+O Jev deliberou a triagem analítica prévia (System 1) para esta requisição:
+- Foco Lógico: ${jevDecision.core_deduction}
+- Domínio: ${jevDecision.domain} (${jevDecision.complexity_label})
+- Guardrails e Restrições:
+${jevDecision.constraints.map((c) => '  * ' + c).join('\n')}
+${jevDecision.execution_steps.length > 0 ? `- Plano de Etapas Calculado pelo Jev:\n` + jevDecision.execution_steps.map((s) => '  ' + s).join('\n') : ''}
 ${verbosityDirective}
 
-INSTRUÇÃO PARA SYSTEM 2:
-Você está operando como o System 2. Siga rigorosamente a dedução lógica e o plano de etapas do Jev definidos acima em cada resposta ou chamada de ferramenta.`;
+DIRETRIZ DE EXECUÇÃO:
+- Se for necessário acionar ferramentas (tools) conectadas ao agente, execute-as prioritariamente.
+- Incorpore este raciocínio deliberado de forma fluida, natural e profissional na resposta final.
+- NUNCA mencione nem repita rótulos internos como "System 2", "Contrato do Jev" ou "Plano do Jev" no texto visível ao usuário.`;
+		}
 
 		const enriched = [...messages];
 		const sysIndex = enriched.findIndex((m) => m.getType() === 'system');
@@ -259,8 +270,8 @@ Você está operando como o System 2. Siga rigorosamente a dedução lógica e o
 		if (sysIndex >= 0) {
 			const existingContent = enriched[sysIndex].content;
 			const textContent = typeof existingContent === 'string' ? existingContent : JSON.stringify(existingContent);
-			if (textContent.includes('[JEV SYSTEM 1 - DELIBERATIVE REASONING CONTRACT]')) {
-				const baseContent = textContent.split('[JEV SYSTEM 1 - DELIBERATIVE REASONING CONTRACT]')[0].trim();
+			if (textContent.includes('[JEV REASONING') || textContent.includes('[JEV SYSTEM 1') || textContent.includes('[DIRETRIZ JEV')) {
+				const baseContent = textContent.split(/\[(?:JEV REASONING|JEV SYSTEM 1|DIRETRIZ JEV)/)[0].trim();
 				enriched[sysIndex] = new SystemMessage(baseContent ? `${baseContent}\n\n${sandwichContract}` : sandwichContract);
 			} else {
 				enriched[sysIndex] = new SystemMessage(`${textContent}\n\n${sandwichContract}`);
@@ -329,22 +340,22 @@ export class JevDualEngine implements INodeType {
 				name: 'model',
 				type: 'string',
 				default: 'gemini-2.5-flash',
-				description: 'Nome do modelo a ser chamado (ex: gemini-2.5-flash, gemini-2.5-pro, gpt-4o, meta-llama/Meta-Llama-3.1-70B-Instruct)',
+				description: 'Nome do modelo (ex: gemini-2.5-flash, gemini-2.5-pro, google/gemma-4-26b-a4b, meta-llama/Meta-Llama-3.1-70B-Instruct, gpt-4o)',
 			},
 			{
 				displayName: 'Provedor da LLM (Override)',
 				name: 'providerOverride',
 				type: 'options',
 				options: [
-					{ name: 'Usar Provedor das Credenciais', value: 'from_cred' },
+					{ name: 'Automático / Das Credenciais', value: 'from_cred' },
 					{ name: 'Google Gemini Oficial (OpenAI Endpoint)', value: 'gemini' },
+					{ name: 'OpenRouter (Gemma, Claude, Llama, Qwen)', value: 'openrouter' },
 					{ name: 'DeepInfra (Llama 3.1 / DeepSeek / Qwen)', value: 'deepinfra' },
-					{ name: 'OpenRouter', value: 'openrouter' },
 					{ name: 'OpenAI Oficial', value: 'openai' },
 					{ name: 'Custom Endpoint / Ollama Local', value: 'custom' },
 				],
 				default: 'from_cred',
-				description: 'Permite sobrescrever o provedor configurado nas credenciais',
+				description: 'Permite sobrescrever o provedor configurado nas credenciais ou detectar automaticamente',
 			},
 			{
 				displayName: 'Estilo de Resposta (Verbosidade)',
@@ -411,9 +422,20 @@ export class JevDualEngine implements INodeType {
 		const verbosity = this.getNodeParameter('verbosity', itemIndex, 'concise') as 'concise' | 'balanced' | 'detailed';
 		const enableSandwich = this.getNodeParameter('enableSandwich', itemIndex, true) as boolean;
 
-		const provider = providerOverride !== 'from_cred' ? providerOverride : (llmCreds.provider || 'gemini');
+		let provider = providerOverride !== 'from_cred' ? providerOverride : (llmCreds.provider || 'gemini');
 		let apiKey = llmCreds.apiKey || '';
 		let baseURL = 'https://api.openai.com/v1';
+		let defaultHeaders: Record<string, string> | undefined = undefined;
+
+		// Detecção inteligente de provedor (YAGNI & Tolerância a falhas):
+		// 1. Chaves OpenRouter começam com 'sk-or-'
+		if (apiKey.startsWith('sk-or-')) {
+			provider = 'openrouter';
+		}
+		// 2. Modelos com barra (ex: google/gemma-4-26b-a4b, meta-llama/...) são OpenRouter ou DeepInfra
+		else if (provider === 'gemini' && modelName.includes('/')) {
+			provider = 'openrouter';
+		}
 
 		if (provider === 'gemini') {
 			baseURL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
@@ -427,6 +449,10 @@ export class JevDualEngine implements INodeType {
 			baseURL = 'https://api.deepinfra.com/v1/openai';
 		} else if (provider === 'openrouter') {
 			baseURL = 'https://openrouter.ai/api/v1';
+			defaultHeaders = {
+				'HTTP-Referer': 'https://n8n.io',
+				'X-Title': 'n8n Jev Dual-Engine',
+			};
 		} else if (provider === 'openai') {
 			baseURL = 'https://api.openai.com/v1';
 			if (!apiKey) {
@@ -445,6 +471,7 @@ export class JevDualEngine implements INodeType {
 				apiKey,
 				configuration: {
 					baseURL,
+					defaultHeaders,
 				},
 			},
 			{
