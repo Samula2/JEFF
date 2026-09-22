@@ -192,6 +192,10 @@ export function cleanLatexText(text: string): string {
 
 	// Comandos e símbolos matemáticos
 	const mathReplacements: Record<string, string> = {
+		'\\lambda': 'λ',
+		'\\Lambda': 'Λ',
+		'\\cdot': '·',
+		'\\dot': '˙',
 		'\\int': '∫',
 		'\\iint': '∬',
 		'\\iiint': '∭',
@@ -205,21 +209,30 @@ export function cleanLatexText(text: string): string {
 		'\\ge': '≥',
 		'\\nu': 'ν',
 		'\\sigma': 'σ',
+		'\\Sigma': 'Σ',
 		'\\Omega': 'Ω',
 		'\\omega': 'ω',
 		'\\alpha': 'α',
 		'\\beta': 'β',
 		'\\gamma': 'γ',
+		'\\Gamma': 'Γ',
 		'\\delta': 'δ',
 		'\\Delta': 'Δ',
 		'\\theta': 'θ',
-		'\\lambda': 'λ',
+		'\\Theta': 'Θ',
 		'\\mu': 'μ',
 		'\\pi': 'π',
+		'\\Pi': 'Π',
 		'\\rho': 'ρ',
 		'\\tau': 'τ',
 		'\\phi': 'φ',
+		'\\Phi': 'Φ',
 		'\\psi': 'ψ',
+		'\\Psi': 'Ψ',
+		'\\zeta': 'ζ',
+		'\\eta': 'η',
+		'\\xi': 'ξ',
+		'\\chi': 'χ',
 		'\\langle': '⟨',
 		'\\rangle': '⟩',
 		'\\cap': '∩',
@@ -228,9 +241,9 @@ export function cleanLatexText(text: string): string {
 		'\\subseteq': '⊆',
 		'\\partial': '∂',
 		'\\times': '×',
-		'\\cdot': '·',
 		'\\neq': '≠',
 		'\\approx': '≈',
+		'\\sim': '~',
 		'\\pm': '±',
 		'\\mp': '∓',
 		'\\sqrt': '√',
@@ -250,6 +263,9 @@ export function cleanLatexText(text: string): string {
 		out = out.split(key).join(val);
 	}
 
+	// Remove formatações de texto do LaTeX: \text{...}, \mathbf{...}, \mathrm{...}
+	out = out.replace(/\\(?:text|mathbf|mathrm|mathit|boldsymbol|mathcal)\{([^{}]+)\}/g, '$1');
+
 	// Sobrescritos e subscritos comuns
 	out = out
 		.replace(/\^2\b/g, '²')
@@ -265,12 +281,19 @@ export function cleanLatexText(text: string): string {
 		.replace(/_j\b/g, 'ⱼ')
 		.replace(/_n\b/g, 'ₙ');
 
-	// Remove chaves LaTeX residuais como {L^2} ou {loc}
+	// Subscritos/sobrescritos com chaves: I_{ext} -> I_ext, H^{s} -> H^s
+	out = out.replace(/_\{([^{}]+)\}/g, '_$1');
+	out = out.replace(/\^\{([^{}]+)\}/g, '^$1');
+
+	// Remove chaves LaTeX residuais como {L^2} ou {loc} ou {˙H^s}
 	out = out.replace(/\{([^{}]+)\}/g, '$1');
 
 	// Remove delimitadores de bloco $$ e embutidos $
 	out = out.replace(/\$\$/g, '');
 	out = out.replace(/\$([^$]+)\$/g, '$1');
+
+	// Qualquer barra invertida solta antes de palavras: \abc -> abc
+	out = out.replace(/\\([a-zA-Z]+)/g, '$1');
 
 	return out;
 }
@@ -336,9 +359,20 @@ export class JevChatModel extends ChatOpenAI {
 		}
 
 		const cleanMathDirective = this.jevConfig.cleanMath !== false
-			? `\nFORMATAÇÃO DE FÓRMULAS E MATEMÁTICA:
-O chat do n8n NÃO suporta código LaTeX. NUNCA utilize delimitações em dólar ($ ou $$) nem comandos LaTeX com barra invertida (como \\frac, \\int, \\nabla, \\in, \\partial, \\nu, \\Omega, \\infty, \\leq, \\rangle, etc.).
-Escreva toda e qualquer fórmula, variável ou expressão matemática em texto comum e caracteres Unicode legíveis (ex: use 1/2 ou ½ em vez de \\frac{1}{2}; use u(t) em vez de $u(t)$; use ∫ em vez de \\int; use ∇ em vez de \\nabla; use ∈ em vez de \\in; use ∞ em vez de \\infty; use ≤ em vez de \\leq).`
+			? `\nREGRA ESTRITA DE FORMATAÇÃO (SEM LATEX):
+O chat do n8n NÃO SUPORTA NENHUMA SINTAXE LATEX. É ESTRITAMENTE PROIBIDO usar barras invertidas para letras gregas ou símbolos.
+- NUNCA use \\lambda, use λ.
+- NUNCA use \\cdot, use · ou *.
+- NUNCA use \\dot, use ˙ ou ponto.
+- NUNCA use \\int, use ∫.
+- NUNCA use \\nabla, use ∇.
+- NUNCA use \\in, use ∈.
+- NUNCA use \\infty, use ∞.
+- NUNCA use \\sigma, use σ.
+- NUNCA use \\Omega, use Ω.
+- NUNCA use chaves de agrupamento matemático como {\\dotH^s} ou I_{ext}. Use I_ext, H^s, etc.
+- NUNCA use delimitadores $ ou $$.
+Toda a matemática e física DEVE ser redigida exclusivamente em texto limpo com caracteres Unicode naturais.`
 			: '';
 
 		const isGreeting = /^(oi|olá|ola|e aí|e ai|opa|bom dia|boa tarde|boa noite|hello|hi|hey|teste|test)\b/i.test(promptText.trim()) ||
@@ -403,16 +437,40 @@ DIRETRIZ DE EXECUÇÃO:
 	// @ts-ignore
 	override async *_streamResponseChunks(messages: BaseMessage[], options: any, runManager?: any): AsyncGenerator<any, void, unknown> {
 		const enrichedMessages = this.enrichMessagesWithJev(messages);
+		let buffer = '';
 		for await (const chunk of super._streamResponseChunks(enrichedMessages, options, runManager)) {
-			if (this.jevConfig.cleanMath !== false) {
-				if (chunk?.text && typeof chunk.text === 'string') {
-					chunk.text = cleanLatexText(chunk.text);
-				}
-				if (chunk?.message && typeof chunk.message.content === 'string') {
-					chunk.message.content = cleanLatexText(chunk.message.content);
-				}
+			if (this.jevConfig.cleanMath === false) {
+				yield chunk;
+				continue;
 			}
-			yield chunk;
+			const text = chunk?.text || (typeof chunk?.message?.content === 'string' ? chunk.message.content : '');
+			if (text) {
+				buffer += text;
+				const lastBackslash = buffer.lastIndexOf('\\');
+				if (lastBackslash === -1) {
+					const cleaned = cleanLatexText(buffer);
+					buffer = '';
+					if (chunk.text !== undefined) chunk.text = cleaned;
+					if (chunk?.message && typeof chunk.message.content === 'string') chunk.message.content = cleaned;
+					yield chunk;
+				} else {
+					const afterBackslash = buffer.slice(lastBackslash + 1);
+					// Se após a barra houver caractere não-letra (espaço, pontuação, etc.), o comando LaTeX foi finalizado
+					if (/[^a-zA-Z]/.test(afterBackslash)) {
+						const cleaned = cleanLatexText(buffer);
+						buffer = '';
+						if (chunk.text !== undefined) chunk.text = cleaned;
+						if (chunk?.message && typeof chunk.message.content === 'string') chunk.message.content = cleaned;
+						yield chunk;
+					}
+				}
+			} else {
+				yield chunk;
+			}
+		}
+		if (buffer) {
+			const cleaned = cleanLatexText(buffer);
+			yield { text: cleaned, message: { content: cleaned } } as any;
 		}
 	}
 }
