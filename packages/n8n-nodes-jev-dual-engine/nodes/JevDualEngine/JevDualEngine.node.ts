@@ -185,9 +185,102 @@ export function localJevSimulate(prompt: string): JevSimulationResult {
 	};
 }
 
+export function cleanLatexText(text: string): string {
+	if (!text || typeof text !== 'string') return text;
+	let out = text;
+
+	// Frações: \frac{a}{b} -> (a/b)
+	out = out.replace(/\\(?:d)?frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1/$2)');
+
+	// Comandos e símbolos matemáticos
+	const mathReplacements: Record<string, string> = {
+		'\\int': '∫',
+		'\\iint': '∬',
+		'\\iiint': '∭',
+		'\\nabla': '∇',
+		'\\in': '∈',
+		'\\notin': '∉',
+		'\\infty': '∞',
+		'\\leq': '≤',
+		'\\le': '≤',
+		'\\geq': '≥',
+		'\\ge': '≥',
+		'\\nu': 'ν',
+		'\\sigma': 'σ',
+		'\\Omega': 'Ω',
+		'\\omega': 'ω',
+		'\\alpha': 'α',
+		'\\beta': 'β',
+		'\\gamma': 'γ',
+		'\\delta': 'δ',
+		'\\Delta': 'Δ',
+		'\\theta': 'θ',
+		'\\lambda': 'λ',
+		'\\mu': 'μ',
+		'\\pi': 'π',
+		'\\rho': 'ρ',
+		'\\tau': 'τ',
+		'\\phi': 'φ',
+		'\\psi': 'ψ',
+		'\\langle': '⟨',
+		'\\rangle': '⟩',
+		'\\cap': '∩',
+		'\\cup': '∪',
+		'\\subset': '⊂',
+		'\\subseteq': '⊆',
+		'\\partial': '∂',
+		'\\times': '×',
+		'\\cdot': '·',
+		'\\neq': '≠',
+		'\\approx': '≈',
+		'\\pm': '±',
+		'\\mp': '∓',
+		'\\sqrt': '√',
+		'\\sum': '∑',
+		'\\prod': '∏',
+		'\\forall': '∀',
+		'\\exists': '∃',
+		'\\to': '→',
+		'\\rightarrow': '→',
+		'\\leftarrow': '←',
+		'\\Rightarrow': '⇒',
+		'\\Leftarrow': '⇐',
+		'\\iff': '⇔',
+	};
+
+	for (const [key, val] of Object.entries(mathReplacements)) {
+		out = out.split(key).join(val);
+	}
+
+	// Sobrescritos e subscritos comuns
+	out = out
+		.replace(/\^2\b/g, '²')
+		.replace(/\^3\b/g, '³')
+		.replace(/\^0\b/g, '⁰')
+		.replace(/\^1\b/g, '¹')
+		.replace(/\^n\b/g, 'ⁿ')
+		.replace(/_0\b/g, '₀')
+		.replace(/_1\b/g, '₁')
+		.replace(/_2\b/g, '₂')
+		.replace(/_3\b/g, '₃')
+		.replace(/_i\b/g, 'ᵢ')
+		.replace(/_j\b/g, 'ⱼ')
+		.replace(/_n\b/g, 'ₙ');
+
+	// Remove chaves LaTeX residuais como {L^2} ou {loc}
+	out = out.replace(/\{([^{}]+)\}/g, '$1');
+
+	// Remove delimitadores de bloco $$ e embutidos $
+	out = out.replace(/\$\$/g, '');
+	out = out.replace(/\$([^$]+)\$/g, '$1');
+
+	return out;
+}
+
 export interface JevConfig {
 	verbosity?: 'concise' | 'balanced' | 'detailed';
 	enableSandwich?: boolean;
+	cleanMath?: boolean;
 }
 
 export class JevChatModel extends ChatOpenAI {
@@ -244,12 +337,18 @@ export class JevChatModel extends ChatOpenAI {
 			verbosityDirective = 'DIRETIVA: Responda de forma aprofundada, didática e conceitual.';
 		}
 
+		const cleanMathDirective = this.jevConfig.cleanMath !== false
+			? `\nFORMATAÇÃO DE FÓRMULAS E MATEMÁTICA:
+O chat do n8n NÃO suporta código LaTeX. NUNCA utilize delimitações em dólar ($ ou $$) nem comandos LaTeX com barra invertida (como \\frac, \\int, \\nabla, \\in, \\partial, \\nu, \\Omega, \\infty, \\leq, \\rangle, etc.).
+Escreva toda e qualquer fórmula, variável ou expressão matemática em texto comum e caracteres Unicode legíveis (ex: use 1/2 ou ½ em vez de \\frac{1}{2}; use u(t) em vez de $u(t)$; use ∫ em vez de \\int; use ∇ em vez de \\nabla; use ∈ em vez de \\in; use ∞ em vez de \\infty; use ≤ em vez de \\leq).`
+			: '';
+
 		const isGreeting = /^(oi|olá|ola|e aí|e ai|opa|bom dia|boa tarde|boa noite|hello|hi|hey|teste|test)\b/i.test(promptText.trim()) ||
 			(jevDecision.intent === 'chat' && promptText.length < 30);
 
 		let sandwichContract = '';
 		if (isGreeting) {
-			sandwichContract = `[DIRETRIZ JEV REASONING]: Interação conversacional direta. Responda com cordialidade natural e prontidão, sem jargões ou estruturas mecânicas.`;
+			sandwichContract = `[DIRETRIZ JEV REASONING]: Interação conversacional direta. Responda com cordialidade natural e prontidão, sem jargões ou estruturas mecânicas.${cleanMathDirective}`;
 		} else {
 			sandwichContract = `[JEV REASONING CONTEXT & GUIDELINES]
 O Jev deliberou a triagem analítica prévia (System 1) para esta requisição:
@@ -259,6 +358,7 @@ O Jev deliberou a triagem analítica prévia (System 1) para esta requisição:
 ${jevDecision.constraints.map((c) => '  * ' + c).join('\n')}
 ${jevDecision.execution_steps.length > 0 ? `- Plano de Etapas Calculado pelo Jev:\n` + jevDecision.execution_steps.map((s) => '  ' + s).join('\n') : ''}
 ${verbosityDirective}
+${cleanMathDirective}
 
 DIRETRIZ DE EXECUÇÃO:
 - Se for necessário acionar ferramentas (tools) conectadas ao agente, execute-as prioritariamente.
@@ -288,13 +388,34 @@ DIRETRIZ DE EXECUÇÃO:
 	// @ts-ignore
 	override async _generate(messages: BaseMessage[], options: any, runManager?: any): Promise<ChatResult> {
 		const enrichedMessages = this.enrichMessagesWithJev(messages);
-		return super._generate(enrichedMessages, options, runManager);
+		const result = await super._generate(enrichedMessages, options, runManager);
+		if (this.jevConfig.cleanMath !== false && result?.generations) {
+			for (const gen of result.generations) {
+				if (typeof gen.text === 'string') {
+					gen.text = cleanLatexText(gen.text);
+				}
+				if (gen.message && typeof gen.message.content === 'string') {
+					gen.message.content = cleanLatexText(gen.message.content);
+				}
+			}
+		}
+		return result;
 	}
 
 	// @ts-ignore
 	override async *_streamResponseChunks(messages: BaseMessage[], options: any, runManager?: any): AsyncGenerator<any, void, unknown> {
 		const enrichedMessages = this.enrichMessagesWithJev(messages);
-		yield* super._streamResponseChunks(enrichedMessages, options, runManager);
+		for await (const chunk of super._streamResponseChunks(enrichedMessages, options, runManager)) {
+			if (this.jevConfig.cleanMath !== false) {
+				if (chunk?.text && typeof chunk.text === 'string') {
+					chunk.text = cleanLatexText(chunk.text);
+				}
+				if (chunk?.message && typeof chunk.message.content === 'string') {
+					chunk.message.content = cleanLatexText(chunk.message.content);
+				}
+			}
+			yield chunk;
+		}
 	}
 }
 
@@ -362,6 +483,13 @@ export class JevDualEngine implements INodeType {
 				},
 				default: 'gemini-2.5-flash',
 				description: 'Escolha um modelo identificado automaticamente na API conectada ou use uma expressão para digitar manualmente',
+			},
+			{
+				displayName: 'Formatar Fórmulas para Chat (Sem LaTeX)',
+				name: 'cleanMath',
+				type: 'boolean',
+				default: true,
+				description: 'Evita caracteres de código LaTeX ($ e \\) que quebram no chat do n8n, convertendo fórmulas para texto puro e símbolos Unicode legíveis (ex: x², ½, ∫, ∇)',
 			},
 			{
 				displayName: 'Estilo de Resposta (Verbosidade)',
@@ -615,6 +743,7 @@ export class JevDualEngine implements INodeType {
 
 		let modelName = this.getNodeParameter('model', itemIndex, 'gemini-2.5-flash') as string;
 		const providerOverride = this.getNodeParameter('providerOverride', itemIndex, 'from_cred') as string;
+		const cleanMath = this.getNodeParameter('cleanMath', itemIndex, true) as boolean;
 		const temperature = this.getNodeParameter('temperature', itemIndex, 0.2) as number;
 		const maxTokens = this.getNodeParameter('maxTokens', itemIndex, 4096) as number;
 		const verbosity = this.getNodeParameter('verbosity', itemIndex, 'concise') as 'concise' | 'balanced' | 'detailed';
@@ -682,6 +811,7 @@ export class JevDualEngine implements INodeType {
 			{
 				verbosity,
 				enableSandwich,
+				cleanMath,
 			},
 		);
 
