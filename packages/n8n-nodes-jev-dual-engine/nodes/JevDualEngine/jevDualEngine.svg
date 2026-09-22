@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#18200a" />
+      <stop offset="100%" stop-color="#080a02" />
+    </linearGradient>
+    <filter id="voltGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="0" stdDeviation="2.5" flood-color="#d2ff00" flood-opacity="0.5" />
+    </filter>
+  </defs>
+
+  <rect x="2" y="2" width="60" height="60" rx="8" fill="url(#bgGrad)" stroke="#d2ff00" stroke-width="2" />
+  <path d="M 44,2 L 62,20 L 62,2 Z" fill="#d2ff00" opacity="0.9" />
+
+  <!-- Dual Lightning / Neural Circuit -->
+  <path d="M 28,14 L 18,34 L 30,34 L 22,50 L 46,28 L 34,28 Z" fill="#d2ff00" filter="url(#voltGlow)" />
+  <circle cx="48" cy="46" r="3.5" fill="#ff8000" />
+  <circle cx="16" cy="18" r="2.5" fill="#ff8000" />
+</svg>

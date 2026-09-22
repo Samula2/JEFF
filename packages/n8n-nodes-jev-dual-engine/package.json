@@ -1,0 +1,45 @@
+{
+  "name": "n8n-nodes-jev-dual-engine",
+  "version": "0.1.0",
+  "description": "n8n community node for Jev Dual-Engine AI: sub-30ms System 1 reasoning, logical deductions and action planning coupled with System 2 generative LLM translation.",
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "ai",
+    "llm",
+    "reasoning",
+    "gemini",
+    "typesafe",
+    "dual-engine",
+    "guardrails"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/Samula2/JEFF",
+  "author": {
+    "name": "Jev AI Team"
+  },
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc && node copy-assets.js",
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
+  },
+  "files": [
+    "dist"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/JevApi.credentials.js",
+      "dist/credentials/JevLlmApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/JevDualEngine/JevDualEngine.node.js"
+    ]
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "n8n-workflow": "^1.70.0",
+    "typescript": "^5.4.0"
+  }
+}

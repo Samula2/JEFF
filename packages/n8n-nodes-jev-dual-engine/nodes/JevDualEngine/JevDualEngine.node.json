@@ -1,0 +1,24 @@
+{
+  "node": "n8n-nodes-jev-dual-engine.jevDualEngine",
+  "nodeVersion": "1.0",
+  "codex": {
+    "categories": [
+      "AI",
+      "Development",
+      "Core Nodes"
+    ],
+    "subcategories": {
+      "AI": [
+        "Reasoning",
+        "Language Models"
+      ]
+    },
+    "resources": {
+      "primaryDocumentation": [
+        {
+          "url": "https://github.com/Samula2/JEFF"
+        }
+      ]
+    }
+  }
+}
