@@ -412,22 +412,57 @@ Sintetize a resposta em português fluente seguindo fielmente o plano de execuç
 			const tTotalEnd = Date.now();
 			const totalMs = Math.max(1, tTotalEnd - tTotalStart);
 
+			// Tokens calculados por agente respectivamente
+			const jevPromptTokens = Math.max(1, Math.round(prompt.length / 4));
+			const jevPlanStr = jevDecision.core_deduction + ' ' + jevDecision.execution_steps.join(' ') + ' ' + jevDecision.constraints.join(' ');
+			const jevCompletionTokens = Math.max(1, Math.round(jevPlanStr.length / 4));
+			const jevTotalTokens = jevPromptTokens + jevCompletionTokens;
+
+			const llmPromptTokens = usage.prompt_tokens || Math.max(1, Math.round(systemPrompt.length / 4) + jevPromptTokens);
+			const llmCompletionTokens = usage.completion_tokens || Math.max(1, Math.round(generatedText.length / 4));
+			const llmTotalTokens = usage.total_tokens || (llmPromptTokens + llmCompletionTokens);
+
 			const outputJson: any = {
+				output: generatedText,
 				response: generatedText,
+				tokens: {
+					jev_system_1: {
+						agent: 'Jev (Reasoner S1)',
+						prompt_tokens: jevPromptTokens,
+						completion_tokens: jevCompletionTokens,
+						total_tokens: jevTotalTokens,
+					},
+					llm_system_2: {
+						agent: `LLM Translator S2 (${provider}/${model})`,
+						prompt_tokens: llmPromptTokens,
+						completion_tokens: llmCompletionTokens,
+						total_tokens: llmTotalTokens,
+					},
+					total_tokens: jevTotalTokens + llmTotalTokens,
+				},
+				latency: {
+					jev_s1_ms: jevDecision.latency_s1_ms,
+					llm_s2_ms: Math.max(1, totalMs - jevDecision.latency_s1_ms),
+					total_ms: totalMs,
+				},
 				model,
 				provider,
-				latency_total_ms: totalMs,
 			};
 
 			if (includeThoughts) {
 				outputJson.thoughts = {
-					...jevDecision,
-					latency_s2_ms: Math.max(1, totalMs - jevDecision.latency_s1_ms),
+					intent: jevDecision.intent,
+					intent_confidence: jevDecision.intent_confidence,
+					risk_assessment: jevDecision.risk_assessment,
+					risk_confidence: jevDecision.risk_confidence,
+					complexity_score: jevDecision.complexity_score,
+					complexity_label: jevDecision.complexity_label,
+					domain: jevDecision.domain,
+					core_deduction: jevDecision.core_deduction,
+					constraints: jevDecision.constraints,
+					execution_steps: jevDecision.execution_steps,
+					code_specification: jevDecision.code_specification,
 				};
-			}
-
-			if (usage && usage.total_tokens) {
-				outputJson.usage = usage;
 			}
 
 			returnData.push({
