@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-jev-dual-engine",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "n8n community node for Jev Dual-Engine AI Language Model: sub-30ms System 1 reasoning directly connectable to AI Agents and Chains.",
   "keywords": [
     "n8n-community-node-package",

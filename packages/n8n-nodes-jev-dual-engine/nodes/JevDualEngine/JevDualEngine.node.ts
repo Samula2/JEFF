@@ -1,6 +1,4 @@
 import {
-	ILoadOptionsFunctions,
-	INodePropertyOptions,
 	INodeType,
 	INodeTypeDescription,
 	ISupplyDataFunctions,
@@ -465,10 +463,10 @@ export class JevDualEngine implements INodeType {
 				options: [
 					{ name: 'Automático / Das Credenciais', value: 'from_cred' },
 					{ name: 'Google Gemini Oficial (OpenAI Endpoint)', value: 'gemini' },
-					{ name: 'OpenRouter (Gemma 4, Claude, Llama, Qwen)', value: 'openrouter' },
+					{ name: 'OpenRouter (Gemma, Claude, Llama, Qwen)', value: 'openrouter' },
 					{ name: 'DeepInfra (Llama 3.1 / DeepSeek / Qwen)', value: 'deepinfra' },
 					{ name: 'OpenAI Oficial', value: 'openai' },
-					{ name: 'Custom Endpoint / Ollama Local', value: 'custom' },
+					{ name: 'Custom Endpoint / Mac mini / Ollama Local', value: 'custom' },
 				],
 				default: 'from_cred',
 				description: 'Permite escolher o provedor ou detectar automaticamente a partir da credencial/chave',
@@ -476,13 +474,9 @@ export class JevDualEngine implements INodeType {
 			{
 				displayName: 'Modelo da LLM',
 				name: 'model',
-				type: 'options',
-				typeOptions: {
-					loadOptionsMethod: 'getModels',
-					loadOptionsDependsOn: ['providerOverride'],
-				},
+				type: 'string',
 				default: 'gemini-2.5-flash',
-				description: 'Escolha um modelo identificado automaticamente na API conectada ou use uma expressão para digitar manualmente',
+				description: 'Nome do modelo a ser chamado (ex: gemini-2.5-flash, gpt-4o, google/gemma-4-26b-a4b-it, ou qualquer modelo local no seu Mac mini/Ollama)',
 			},
 			{
 				displayName: 'Formatar Fórmulas para Chat (Sem LaTeX)',
@@ -541,198 +535,6 @@ export class JevDualEngine implements INodeType {
 		],
 	};
 
-	methods = {
-		loadOptions: {
-			async getModels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-				let llmCreds: any = {};
-				try {
-					llmCreds = await this.getCredentials('jevLlmApi');
-				} catch {}
-
-				const providerOverride = (this.getCurrentNodeParameter('providerOverride') as string) || 'from_cred';
-				let provider = providerOverride !== 'from_cred' ? providerOverride : (llmCreds.provider || 'gemini');
-				const apiKey = llmCreds.apiKey || '';
-				const customBaseUrl = llmCreds.customBaseUrl || 'http://localhost:11434/v1';
-
-				if (apiKey.startsWith('sk-or-')) {
-					provider = 'openrouter';
-				}
-
-				// 1. Google Gemini
-				if (provider === 'gemini') {
-					const geminiApiKey = apiKey || process.env.GEMINI_API_KEY || '';
-					if (geminiApiKey) {
-						try {
-							const response = await this.helpers.httpRequest({
-								method: 'GET',
-								url: `https://generativelanguage.googleapis.com/v1beta/models?key=${geminiApiKey}`,
-								json: true,
-							});
-							if (response?.models && Array.isArray(response.models)) {
-								const options: INodePropertyOptions[] = response.models
-									.filter((m: any) => m.supportedGenerationMethods?.includes('generateContent'))
-									.map((m: any) => {
-										const id = m.name.replace(/^models\//, '');
-										return {
-											name: `${m.displayName || id} (${id})`,
-											value: id,
-											description: m.description ? m.description.slice(0, 100) : `Modelo Gemini ${id}`,
-										};
-									});
-								if (options.length > 0) return options;
-							}
-						} catch {}
-					}
-					return [
-						{ name: 'Gemini 2.5 Flash (Recomendado — Rápido & Multimodal)', value: 'gemini-2.5-flash', description: 'Alta velocidade e raciocínio eficiente' },
-						{ name: 'Gemini 2.5 Pro (Raciocínio Avançado)', value: 'gemini-2.5-pro', description: 'Modelo topo de linha do Google' },
-						{ name: 'Gemini 2.0 Flash', value: 'gemini-2.0-flash', description: 'Geração 2.0 de ultrabaixa latência' },
-						{ name: 'Gemini 1.5 Flash', value: 'gemini-1.5-flash', description: 'Modelo estável e eficiente' },
-						{ name: 'Gemini 1.5 Pro', value: 'gemini-1.5-pro', description: 'Contexto gigante e alta precisão' },
-					];
-				}
-
-				// 2. OpenRouter
-				if (provider === 'openrouter') {
-					try {
-						const headers: Record<string, string> = {
-							'HTTP-Referer': 'https://n8n.io',
-							'X-Title': 'n8n Jev Dual-Engine',
-						};
-						if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-						const response = await this.helpers.httpRequest({
-							method: 'GET',
-							url: 'https://openrouter.ai/api/v1/models',
-							headers,
-							json: true,
-						});
-						if (response?.data && Array.isArray(response.data)) {
-							const popularKeywords = ['gemma-4', 'gemma-3', 'claude-3.5', 'gpt-4o', 'llama-3.3', 'deepseek-chat', 'deepseek-r1', 'qwen-2.5'];
-							const options: INodePropertyOptions[] = response.data.map((m: any) => {
-								const isFree = m.id.endsWith(':free');
-								return {
-									name: `${m.name || m.id}${isFree ? ' ⚡[FREE]' : ''} (${m.id})`,
-									value: m.id,
-									description: `Contexto: ${Math.round((m.context_length || 0) / 1000)}k tokens`,
-								};
-							});
-							options.sort((a, b) => {
-								const aPop = popularKeywords.some((k) => (a.value as string).toLowerCase().includes(k)) ? 0 : 1;
-								const bPop = popularKeywords.some((k) => (b.value as string).toLowerCase().includes(k)) ? 0 : 1;
-								if (aPop !== bPop) return aPop - bPop;
-								return a.name.localeCompare(b.name);
-							});
-							if (options.length > 0) return options;
-						}
-					} catch {}
-					return [
-						{ name: 'Google: Gemma 4 26B A4B Instruct (google/gemma-4-26b-a4b-it)', value: 'google/gemma-4-26b-a4b-it', description: 'MoE 26B (4B ativos) de última geração' },
-						{ name: 'Google: Gemma 4 26B A4B Instruct [FREE] (google/gemma-4-26b-a4b-it:free)', value: 'google/gemma-4-26b-a4b-it:free', description: 'Versão gratuita do Gemma 4 26B' },
-						{ name: 'Google: Gemma 4 31B Instruct (google/gemma-4-31b-it)', value: 'google/gemma-4-31b-it', description: 'Gemma 4 31B denso' },
-						{ name: 'Anthropic: Claude 3.5 Sonnet (anthropic/claude-3.5-sonnet)', value: 'anthropic/claude-3.5-sonnet', description: 'Alta inteligência em código e raciocínio' },
-						{ name: 'OpenAI: GPT-4o (openai/gpt-4o)', value: 'openai/gpt-4o', description: 'Modelo topo de linha da OpenAI' },
-						{ name: 'Meta: Llama 3.3 70B Instruct (meta-llama/llama-3.3-70b-instruct)', value: 'meta-llama/llama-3.3-70b-instruct', description: 'Llama 3.3 70B' },
-						{ name: 'DeepSeek: DeepSeek V3 (deepseek/deepseek-chat)', value: 'deepseek/deepseek-chat', description: 'Chat e raciocínio DeepSeek' },
-						{ name: 'Qwen: Qwen 2.5 72B Instruct (qwen/qwen-2.5-72b-instruct)', value: 'qwen/qwen-2.5-72b-instruct', description: 'Excelente em código e lógica' },
-					];
-				}
-
-				// 3. DeepInfra
-				if (provider === 'deepinfra') {
-					if (apiKey) {
-						try {
-							const response = await this.helpers.httpRequest({
-								method: 'GET',
-								url: 'https://api.deepinfra.com/v1/openai/models',
-								headers: { Authorization: `Bearer ${apiKey}` },
-								json: true,
-							});
-							if (response?.data && Array.isArray(response.data)) {
-								const options: INodePropertyOptions[] = response.data.map((m: any) => ({
-									name: `${m.id}`,
-									value: m.id,
-									description: `Modelo DeepInfra ${m.id}`,
-								}));
-								if (options.length > 0) return options;
-							}
-						} catch {}
-					}
-					return [
-						{ name: 'Meta-Llama-3.1-70B-Instruct', value: 'meta-llama/Meta-Llama-3.1-70B-Instruct' },
-						{ name: 'Meta-Llama-3.1-8B-Instruct', value: 'meta-llama/Meta-Llama-3.1-8B-Instruct' },
-						{ name: 'DeepSeek-V3', value: 'deepseek-ai/DeepSeek-V3' },
-						{ name: 'DeepSeek-R1', value: 'deepseek-ai/DeepSeek-R1' },
-						{ name: 'Qwen2.5-72B-Instruct', value: 'Qwen/Qwen2.5-72B-Instruct' },
-						{ name: 'Qwen2.5-Coder-32B-Instruct', value: 'Qwen/Qwen2.5-Coder-32B-Instruct' },
-					];
-				}
-
-				// 4. OpenAI
-				if (provider === 'openai') {
-					const openAiKey = apiKey || process.env.OPENAI_API_KEY || '';
-					if (openAiKey) {
-						try {
-							const response = await this.helpers.httpRequest({
-								method: 'GET',
-								url: 'https://api.openai.com/v1/models',
-								headers: { Authorization: `Bearer ${openAiKey}` },
-								json: true,
-							});
-							if (response?.data && Array.isArray(response.data)) {
-								const options: INodePropertyOptions[] = response.data
-									.filter((m: any) => /^(gpt-|o1|o3)/.test(m.id))
-									.map((m: any) => ({
-										name: m.id,
-										value: m.id,
-									}));
-								if (options.length > 0) return options;
-							}
-						} catch {}
-					}
-					return [
-						{ name: 'GPT-4o (Padrão)', value: 'gpt-4o', description: 'Multimodal de alta inteligência' },
-						{ name: 'GPT-4o Mini', value: 'gpt-4o-mini', description: 'Rápido e econômico' },
-						{ name: 'o3-mini', value: 'o3-mini', description: 'Raciocínio avançado' },
-						{ name: 'o1', value: 'o1', description: 'Raciocínio profundo' },
-					];
-				}
-
-				// 5. Custom / Ollama Local
-				if (provider === 'custom') {
-					const baseUrl = customBaseUrl.replace(/\/+$/, '');
-					try {
-						const ollamaUrl = `${baseUrl.replace(/\/v1$/, '')}/api/tags`;
-						const response = await this.helpers.httpRequest({
-							method: 'GET',
-							url: ollamaUrl,
-							json: true,
-						});
-						if (response?.models && Array.isArray(response.models)) {
-							const options: INodePropertyOptions[] = response.models.map((m: any) => ({
-								name: m.name,
-								value: m.name,
-								description: `Ollama Local (${m.details?.parameter_size || 'local'})`,
-							}));
-							if (options.length > 0) return options;
-						}
-					} catch {}
-					return [
-						{ name: 'llama3.2', value: 'llama3.2' },
-						{ name: 'llama3.1', value: 'llama3.1' },
-						{ name: 'qwen2.5-coder', value: 'qwen2.5-coder' },
-						{ name: 'mistral', value: 'mistral' },
-						{ name: 'deepseek-r1', value: 'deepseek-r1' },
-					];
-				}
-
-				return [
-					{ name: 'gemini-2.5-flash', value: 'gemini-2.5-flash' },
-					{ name: 'gemini-2.5-pro', value: 'gemini-2.5-pro' },
-				];
-			},
-		},
-	};
-
 	async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
 		let llmCreds: any = {};
 		try {
@@ -766,7 +568,7 @@ export class JevDualEngine implements INodeType {
 		if (apiKey.startsWith('sk-or-')) {
 			provider = 'openrouter';
 		}
-		// 2. Modelos com barra (ex: google/gemma-4-26b-a4b-it, meta-llama/...) pertencem ao OpenRouter ou DeepInfra
+		// 2. Modelos com barra e provedor gemini pertencem ao OpenRouter ou DeepInfra
 		else if (provider === 'gemini' && modelName.includes('/')) {
 			provider = 'openrouter';
 		}

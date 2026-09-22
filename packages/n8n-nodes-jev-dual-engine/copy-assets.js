@@ -1,5 +1,5 @@
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
 function copyRecursive(src, dest) {
   if (!fs.existsSync(src)) return;
@@ -13,13 +13,25 @@ function copyRecursive(src, dest) {
     const parent = path.dirname(dest);
     if (!fs.existsSync(parent)) fs.mkdirSync(parent, { recursive: true });
     fs.copyFileSync(src, dest);
-    console.log('Copied asset:', src, '->', dest);
+    console.log("Copied asset:", src, "->", dest);
   }
 }
 
 function fileMatch(file) {
-  return file.endsWith('.svg') || file.endsWith('.png') || file.endsWith('.json') && !file.endsWith('tsconfig.json') && !file.endsWith('package.json');
+  return (
+    file.endsWith(".svg") ||
+    file.endsWith(".png") ||
+    (file.endsWith(".json") &&
+      !file.endsWith("tsconfig.json") &&
+      !file.endsWith("package.json"))
+  );
 }
 
-copyRecursive(path.join(__dirname, 'nodes'), path.join(__dirname, 'dist', 'nodes'));
-copyRecursive(path.join(__dirname, 'credentials'), path.join(__dirname, 'dist', 'credentials'));
+copyRecursive(
+  path.join(__dirname, "nodes"),
+  path.join(__dirname, "dist", "nodes"),
+);
+copyRecursive(
+  path.join(__dirname, "credentials"),
+  path.join(__dirname, "dist", "credentials"),
+);
