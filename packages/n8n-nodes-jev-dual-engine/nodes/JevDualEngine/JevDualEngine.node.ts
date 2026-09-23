@@ -1764,13 +1764,13 @@ export class JevDualEngine implements INodeType {
 						displayName: 'Model Request Timeout (ms)',
 						name: 'requestTimeoutMs',
 						type: 'number',
-						default: 60000,
+						default: 300000,
 						typeOptions: {
 							minValue: 0,
-							maxValue: 900000,
+							maxValue: 1800000,
 							numberStepSize: 1000,
 						},
-						description: 'Timeout máximo para cada requisição ao Gemini em milissegundos',
+						description: 'Timeout máximo para cada requisição em milissegundos (padrão: 300000 ms / 5 min)',
 					},
 					{
 						displayName: 'Recover Empty Final Responses',
@@ -1854,6 +1854,18 @@ export class JevDualEngine implements INodeType {
 						default: '',
 						placeholder: '{"HTTP-Referer": "https://n8n.io", "X-Title": "n8n Jev"}',
 						description: 'Headers HTTP extras em formato JSON (ex: metadados para OpenRouter)',
+					},
+					{
+						displayName: 'Model Request Timeout (ms)',
+						name: 'requestTimeoutMs',
+						type: 'number',
+						default: 300000,
+						typeOptions: {
+							minValue: 0,
+							maxValue: 1800000,
+							numberStepSize: 1000,
+						},
+						description: 'Timeout máximo para cada requisição em milissegundos (padrão: 300000 ms / 5 min). Aumente para modelos locais pesados (Mac mini / Ollama) ou deduções longas.',
 					},
 					...sharedModelOptions(),
 				],
@@ -2019,7 +2031,9 @@ export class JevDualEngine implements INodeType {
 				model: geminiModel,
 				maxRetries: 0,
 				recoverEmptyResponses: opts.recoverEmptyResponses !== false,
-				requestTimeoutMs: opts.requestTimeoutMs ?? 60_000,
+				requestTimeoutMs: typeof opts.requestTimeoutMs === 'number' && !isNaN(opts.requestTimeoutMs)
+					? Math.max(0, opts.requestTimeoutMs)
+					: 300_000,
 			};
 
 			const usageReporter = await createUsageReporter(this, executionItemIndex, geminiModel, sharedOptions);
@@ -2110,14 +2124,20 @@ export class JevDualEngine implements INodeType {
 				modelKwargs.response_format = { type: 'json_object' };
 			}
 
+			const timeoutMs = typeof opts.requestTimeoutMs === 'number' && !isNaN(opts.requestTimeoutMs)
+				? Math.max(0, opts.requestTimeoutMs)
+				: 300_000;
+
 			const modelOptions: Record<string, any> = {
 				apiKey: openaiApiKey,
 				modelName: openaiModel,
 				model: openaiModel,
+				timeout: timeoutMs > 0 ? timeoutMs : undefined,
 				callbacks: [],
 				configuration: {
 					baseURL: baseUrl,
 					defaultHeaders: parsedHeaders,
+					timeout: timeoutMs > 0 ? timeoutMs : undefined,
 				},
 				modelKwargs,
 				maxRetries: 0,

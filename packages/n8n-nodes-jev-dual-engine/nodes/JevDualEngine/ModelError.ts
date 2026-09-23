@@ -438,7 +438,7 @@ function defaultRetryable(
   if (category === 'cancelled') return false;
   if (statusCode !== undefined) return RETRYABLE_HTTP_STATUSES.has(statusCode);
   if (code && RETRYABLE_TRANSPORT_CODES.has(code.toUpperCase())) return true;
-  return category === 'network' || category === 'dns' || category === 'connection';
+  return category === 'network' || category === 'dns' || category === 'connection' || category === 'timeout';
 }
 
 function providerLabel(provider: ModelProvider): string {
