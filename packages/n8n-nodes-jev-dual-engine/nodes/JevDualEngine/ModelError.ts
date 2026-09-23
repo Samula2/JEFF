@@ -233,14 +233,19 @@ function messageFrom(
   error: unknown,
   record: UnknownRecord,
   nestedError: UnknownRecord | undefined,
+  cause?: UnknownRecord | undefined,
 ): string {
   const data = asRecord(record.data) ?? asRecord(asRecord(record.response)?.data);
-  const message =
+  const causeMsg = stringValue(cause?.message);
+  let message =
     stringValue(nestedError?.message) ??
     stringValue(data?.message) ??
     stringValue(record.message) ??
     (typeof error === 'string' ? error : undefined) ??
     'The model request failed.';
+  if (causeMsg && !message.includes(causeMsg)) {
+    message = `${message} (${causeMsg})`;
+  }
   return redactModelErrorText(message);
 }
 
@@ -265,9 +270,16 @@ function classify(
     return 'cancelled';
   }
   if (
+    /ECONNREFUSED|connection refused|UND_ERR_CONNECT_TIMEOUT|Connect Timeout Error/i.test(
+      combined,
+    )
+  ) {
+    return 'connection';
+  }
+  if (
     statusCode === 408 ||
     statusCode === 504 ||
-    /timeout|timed out|deadline.?exceeded|ECONNABORTED|ETIMEDOUT|UND_ERR_(CONNECT|HEADERS)_TIMEOUT/i.test(
+    /timeout|timed out|deadline.?exceeded|ECONNABORTED|ETIMEDOUT|UND_ERR_HEADERS_TIMEOUT/i.test(
       combined,
     )
   ) {
@@ -402,7 +414,7 @@ function hintFor(
     case 'dns':
       return 'Check the endpoint hostname, DNS resolution, proxy configuration, and network connectivity.';
     case 'connection':
-      return 'The endpoint refused the connection. Check that the server is running, the port is correct, and the n8n host can reach it.';
+      return 'The endpoint refused the connection or was unreachable. Check that the local server (Mac mini / LM Studio / Ollama) is running, the IP/port are correct, and your network can reach it.';
     case 'tls':
       return 'Check the HTTPS certificate chain, hostname, corporate proxy, and local CA configuration.';
     case 'invalid_url':
@@ -490,7 +502,7 @@ export function normalizeModelError(
   const name =
     stringValue(record.name) ??
     (typeof error === 'string' ? 'Error' : 'UnknownError');
-  const message = messageFrom(error, record, nestedError);
+  const message = messageFrom(error, record, nestedError, cause);
   const category = classify(name, message, statusCode, status, code);
   const headers = {
     ...headerRecord(asRecord(record.response)?.headers),
