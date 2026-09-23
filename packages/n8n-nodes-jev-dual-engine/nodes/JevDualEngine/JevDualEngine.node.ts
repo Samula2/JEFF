@@ -1445,7 +1445,7 @@ const nodeDescription: INodeTypeDescription = {
 		icon: 'file:jevDualEngine.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: '={{$parameter["model"] || $parameter["openaiModel"] || $parameter["geminiModel"] || "google/gemma-4-26b-a4b"}}',
+		subtitle: '={{$parameter["provider"] === "gemini" ? ($parameter["model"] || "gemini-2.5-flash") : ($parameter["customModel"] || $parameter["model"] || "google/gemma-4-26b-a4b")}}',
 		description: 'Universal Chat Model com Raciocínio Deliberado Jev (System 1 sub-30ms), suporte nativo a Google Gemini e APIs Compatíveis com OpenAI / LLMs Locais (Ollama, LM Studio, DeepSeek, OpenRouter)',
 		defaults: {
 			name: 'Jev Dual-Engine Model',
@@ -1622,7 +1622,28 @@ const nodeDescription: INodeTypeDescription = {
 				description: 'Adiciona no rodapé da mensagem do chat um badge discreto com os tokens gastos pelo Jev (System 1) e pela LLM (System 2)',
 			},
 
-			// ─── 1. NOME DO MODELO ───
+			// ─── 1. TIPO / PROVEDOR DO MODELO ───
+			{
+				displayName: 'Tipo de Provedor',
+				name: 'provider',
+				type: 'options',
+				options: [
+					{
+						name: 'Google Gemini (API Oficial)',
+						value: 'gemini',
+						description: 'Exibe dropdown dinâmico com os modelos disponíveis na sua API Key',
+					},
+					{
+						name: 'Modelo Local / Mac mini / OpenRouter (Padrão OpenAI)',
+						value: 'custom',
+						description: 'Digitar o nome do modelo livremente (ex: google/gemma-4-26b-a4b)',
+					},
+				],
+				default: 'custom',
+				description: 'Escolha se vai usar Gemini na nuvem ou modelo local/OpenAI',
+			},
+
+			// ─── 2. NOME DO MODELO: GEMINI (DROPDOWN DA API) ───
 			{
 				displayName: 'Model Name',
 				name: 'model',
@@ -1630,16 +1651,28 @@ const nodeDescription: INodeTypeDescription = {
 				typeOptions: {
 					loadOptionsMethod: 'getModels',
 				},
-				default: 'google/gemma-4-26b-a4b',
-				description: 'Selecione o modelo da lista gerada pela sua API key/servidor ou use o campo de texto livre abaixo',
+				default: 'gemini-2.5-flash',
+				displayOptions: {
+					show: {
+						provider: ['gemini'],
+					},
+				},
+				description: 'Modelos retornados diretamente pela sua API Key do Google Gemini',
 			},
+
+			// ─── 3. NOME DO MODELO: LOCAL / MAC MINI (DIGITAR MODELO) ───
 			{
-				displayName: 'Custom Model ID (Override)',
+				displayName: 'Model Name',
 				name: 'customModel',
 				type: 'string',
-				default: '',
-				placeholder: 'ex: google/gemma-4-26b-a4b, gemini-2.5-flash',
-				description: 'Se preenchido, sobrepõe a seleção do dropdown acima (permite digitar livremente qualquer nome de modelo)',
+				default: 'google/gemma-4-26b-a4b',
+				placeholder: 'ex: google/gemma-4-26b-a4b, llama3:8b, mistral',
+				displayOptions: {
+					show: {
+						provider: ['custom'],
+					},
+				},
+				description: 'Digite o nome do modelo rodando no seu Mac mini ou servidor local',
 			},
 
 			// ─── 2. OPÇÕES DA LLM ───
@@ -1769,8 +1802,21 @@ async function fetchModelsForDropdown(context: ILoadOptionsFunctions): Promise<I
 		creds = await context.getCredentials('jevLlmApi');
 	} catch {}
 
-	const provider = (creds.provider || 'gemini') as string;
-	const apiKey = (creds.apiKey || '').trim();
+	let provider = (creds.provider || 'gemini') as string;
+	try {
+		const nodeProvider = context.getNodeParameter('provider') as string;
+		if (nodeProvider) provider = nodeProvider;
+	} catch {}
+
+	let apiKey = (creds.apiKey || '').trim();
+	if (!apiKey) {
+		try {
+			const geminiCreds = await context.getCredentials('googleGeminiApi');
+			if (geminiCreds && typeof geminiCreds.apiKey === 'string') {
+				apiKey = geminiCreds.apiKey.trim();
+			}
+		} catch {}
+	}
 
 	// ─── 1. GOOGLE GEMINI (Busca TODOS os modelos da API key) ───
 	if (provider === 'gemini') {
@@ -1918,51 +1964,44 @@ export class JevDualEngine implements INodeType {
 
 		let provider = (llmCreds.provider || 'custom') as string;
 		try {
-			const nodeProvider = this.getNodeParameter('provider', executionItemIndex, 'auto') as string;
-			if (nodeProvider && nodeProvider !== 'auto') {
+			const nodeProvider = this.getNodeParameter('provider', executionItemIndex, '') as string;
+			if (nodeProvider) {
 				provider = nodeProvider === 'openai_compatible' ? 'custom' : nodeProvider;
 			}
 		} catch {}
 
-		let customModel = '';
-		try {
-			customModel = (this.getNodeParameter('customModel', executionItemIndex, '') as string).trim();
-		} catch {}
-		if (!customModel) {
-			try {
-				customModel = (this.getNodeParameter('geminiModelCustom', executionItemIndex, '') as string).trim();
-			} catch {}
-		}
-		if (!customModel) {
-			try {
-				customModel = (this.getNodeParameter('openaiModelCustom', executionItemIndex, '') as string).trim();
-			} catch {}
-		}
-
 		let modelName = '';
-		if (customModel) {
-			modelName = customModel;
-		} else {
+		if (provider === 'gemini') {
 			try {
 				const m = this.getNodeParameter('model', executionItemIndex, '') as string;
 				if (m && m.trim()) modelName = m.trim();
-				else {
+			} catch {}
+			if (!modelName) {
+				try {
+					const g = this.getNodeParameter('geminiModel', executionItemIndex, '') as string;
+					if (g && g.trim()) modelName = g.trim();
+				} catch {}
+			}
+			if (!modelName) modelName = 'gemini-2.5-flash';
+		} else {
+			// Local LLM / Mac mini / OpenRouter
+			try {
+				const c = this.getNodeParameter('customModel', executionItemIndex, '') as string;
+				if (c && c.trim()) modelName = c.trim();
+			} catch {}
+			if (!modelName) {
+				try {
 					const o = this.getNodeParameter('openaiModel', executionItemIndex, '') as string;
 					if (o && o.trim()) modelName = o.trim();
-					else {
-						const g = this.getNodeParameter('geminiModel', executionItemIndex, '') as string;
-						if (g && g.trim()) modelName = g.trim();
-					}
-				}
-			} catch {}
-		}
-
-		if (!modelName) {
-			modelName = provider === 'gemini' ? 'gemini-2.5-flash' : 'google/gemma-4-26b-a4b';
-		} else if (provider === 'gemini' && modelName === 'google/gemma-4-26b-a4b') {
-			modelName = 'gemini-2.5-flash';
-		} else if (provider !== 'gemini' && modelName === 'gemini-2.5-flash') {
-			modelName = 'google/gemma-4-26b-a4b';
+				} catch {}
+			}
+			if (!modelName) {
+				try {
+					const m = this.getNodeParameter('model', executionItemIndex, '') as string;
+					if (m && m.trim()) modelName = m.trim();
+				} catch {}
+			}
+			if (!modelName) modelName = 'google/gemma-4-26b-a4b';
 		}
 
 		// Jev Dual-Engine specific settings
