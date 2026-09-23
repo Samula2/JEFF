@@ -216,120 +216,8 @@ export function localJevSimulate(prompt: string): JevSimulationResult {
 // 2. ANTI-LATEX SANITIZER FOR CLEAN CHAT DISPLAY
 // ─────────────────────────────────────────────────────────────
 
-export function cleanLatexText(text: string): string {
-	if (!text || typeof text !== 'string') return text;
-	let out = text;
-
-	// Frações: \frac{a}{b} -> (a/b)
-	out = out.replace(/\\(?:d)?frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1/$2)');
-
-	// Comandos e símbolos matemáticos
-	const mathReplacements: Record<string, string> = {
-		'\\lambda': 'λ',
-		'\\Lambda': 'Λ',
-		'\\cdot': '·',
-		'\\dot': '˙',
-		'\\int': '∫',
-		'\\iint': '∬',
-		'\\iiint': '∭',
-		'\\nabla': '∇',
-		'\\in': '∈',
-		'\\notin': '∉',
-		'\\infty': '∞',
-		'\\leq': '≤',
-		'\\le': '≤',
-		'\\geq': '≥',
-		'\\ge': '≥',
-		'\\nu': 'ν',
-		'\\sigma': 'σ',
-		'\\Sigma': 'Σ',
-		'\\Omega': 'Ω',
-		'\\omega': 'ω',
-		'\\alpha': 'α',
-		'\\beta': 'β',
-		'\\gamma': 'γ',
-		'\\Gamma': 'Γ',
-		'\\delta': 'δ',
-		'\\Delta': 'Δ',
-		'\\theta': 'θ',
-		'\\Theta': 'Θ',
-		'\\mu': 'μ',
-		'\\pi': 'π',
-		'\\Pi': 'Π',
-		'\\rho': 'ρ',
-		'\\tau': 'τ',
-		'\\phi': 'φ',
-		'\\Phi': 'Φ',
-		'\\psi': 'ψ',
-		'\\Psi': 'Ψ',
-		'\\zeta': 'ζ',
-		'\\eta': 'η',
-		'\\xi': 'ξ',
-		'\\chi': 'χ',
-		'\\langle': '⟨',
-		'\\rangle': '⟩',
-		'\\cap': '∩',
-		'\\cup': '∪',
-		'\\subset': '⊂',
-		'\\subseteq': '⊆',
-		'\\partial': '∂',
-		'\\times': '×',
-		'\\neq': '≠',
-		'\\approx': '≈',
-		'\\sim': '~',
-		'\\pm': '±',
-		'\\mp': '∓',
-		'\\sqrt': '√',
-		'\\sum': '∑',
-		'\\prod': '∏',
-		'\\forall': '∀',
-		'\\exists': '∃',
-		'\\to': '→',
-		'\\rightarrow': '→',
-		'\\leftarrow': '←',
-		'\\Rightarrow': '⇒',
-		'\\Leftarrow': '⇐',
-		'\\iff': '⇔',
-	};
-
-	for (const [key, val] of Object.entries(mathReplacements)) {
-		out = out.split(key).join(val);
-	}
-
-	// Remove formatações de texto do LaTeX: \text{...}, \mathbf{...}, \mathrm{...}
-	out = out.replace(/\\(?:text|mathbf|mathrm|mathit|boldsymbol|mathcal)\{([^{}]+)\}/g, '$1');
-
-	// Sobrescritos e subscritos comuns
-	out = out
-		.replace(/\^2\b/g, '²')
-		.replace(/\^3\b/g, '³')
-		.replace(/\^0\b/g, '⁰')
-		.replace(/\^1\b/g, '¹')
-		.replace(/\^n\b/g, 'ⁿ')
-		.replace(/_0\b/g, '₀')
-		.replace(/_1\b/g, '₁')
-		.replace(/_2\b/g, '₂')
-		.replace(/_3\b/g, '₃')
-		.replace(/_i\b/g, 'ᵢ')
-		.replace(/_j\b/g, 'ⱼ')
-		.replace(/_n\b/g, 'ₙ');
-
-	// Subscritos/sobrescritos com chaves: I_{ext} -> I_ext, H^{s} -> H^s
-	out = out.replace(/_\{([^{}]+)\}/g, '_$1');
-	out = out.replace(/\^\{([^{}]+)\}/g, '^$1');
-
-	// Remove chaves LaTeX residuais como {L^2} ou {loc} ou {˙H^s}
-	out = out.replace(/\{([^{}]+)\}/g, '$1');
-
-	// Remove delimitadores de bloco $$ e embutidos $
-	out = out.replace(/\$\$/g, '');
-	out = out.replace(/\$([^$]+)\$/g, '$1');
-
-	// Qualquer barra invertida solta antes de palavras: \abc -> abc
-	out = out.replace(/\\([a-zA-Z]+)/g, '$1');
-
-	return out;
-}
+export { cleanLatexText, shouldBufferMath } from './Sanitizer';
+import { cleanLatexText, shouldBufferMath } from './Sanitizer';
 
 // ─────────────────────────────────────────────────────────────
 // 3. TOKEN USAGE REPORTING HELPER
@@ -473,20 +361,12 @@ export function enrichMessagesWithJev(
 	}
 
 	const cleanMathDirective = jevConfig.cleanMath !== false
-		? `\nREGRA ESTRITA DE FORMATAÇÃO (SEM LATEX):
-O chat do n8n NÃO SUPORTA NENHUMA SINTAXE LATEX. É ESTRITAMENTE PROIBIDO usar barras invertidas para letras gregas ou símbolos.
-- NUNCA use \\lambda, use λ.
-- NUNCA use \\cdot, use · ou *.
-- NUNCA use \\dot, use ˙ ou ponto.
-- NUNCA use \\int, use ∫.
-- NUNCA use \\nabla, use ∇.
-- NUNCA use \\in, use ∈.
-- NUNCA use \\infty, use ∞.
-- NUNCA use \\sigma, use σ.
-- NUNCA use \\Omega, use Ω.
-- NUNCA use chaves de agrupamento matemático como {\\dotH^s} ou I_{ext}. Use I_ext, H^s, etc.
-- NUNCA use delimitadores $ ou $$.
-Toda a matemática e física DEVE ser redigida exclusivamente em texto limpo com caracteres Unicode naturais.`
+		? `\nREGRA SUPREMA DE FORMATAÇÃO (ABSOLUTAMENTE PROIBIDO LATEX):
+O chat do n8n NÃO SUPORTA NENHUMA SINTAXE LATEX. Mesmo que o usuário peça explicitamente LaTeX, você DEVE escrever toda a matemática em texto limpo com caracteres Unicode naturais:
+- NUNCA use delimitadores de fórmula $ ou $$.
+- NUNCA use barras invertidas para fórmulas ou símbolos gregos (ex: nunca use \\omega, use ω; nunca use \\nabla, use ∇; nunca use \\times, use ×; nunca use \\int, use ∫; nunca use \\infty, use ∞; nunca use \\mathbb{T}, use 𝕋; nunca use \\mathbb{R}, use ℝ; nunca use \\leq, use ≤).
+- Subscritos e sobrescritos devem ser naturais ou com ^ e _ comuns (ex: u₀, u₁, H^s, L^∞, ℝ³, 𝕋³).
+- Escreva fórmulas limpas como: ω = ∇ × u e ∫₀^T ‖ω(t)‖_L^∞ dt < ∞.`
 		: '';
 
 	const isGreeting = /^(oi|olá|ola|e aí|e ai|opa|bom dia|boa tarde|boa noite|hello|hi|hey|teste|test)\b/i.test(promptText.trim()) ||
@@ -625,7 +505,11 @@ export function applyJevDualEngine(
 			let fullOutput = '';
 			let apiUsage: { promptTokens?: number; completionTokens?: number; totalTokens?: number } | undefined;
 
-			for await (const chunk of originalStream(enrichedMessages, options, runManager)) {
+			// CRITICAL: DO NOT pass runManager into originalStream!
+			// If runManager is passed into ChatOpenAI._streamResponseChunks, ChatOpenAI calls
+			// runManager.handleLLMNewToken with raw uncleaned tokens before we can intercept them!
+			// By passing undefined, WE control token emissions to runManager with clean Unicode math.
+			for await (const chunk of originalStream(enrichedMessages, options, undefined)) {
 				const usage = (chunk?.message as any)?.usage_metadata;
 				if (usage) {
 					apiUsage = {
@@ -635,34 +519,32 @@ export function applyJevDualEngine(
 					};
 				}
 
+				const text = chunk?.text || (typeof (chunk?.message as any)?.content === 'string' ? (chunk.message as any).content : '');
+
 				if (jevConfig.cleanMath === false) {
-					const text = chunk?.text || (typeof (chunk?.message as any)?.content === 'string' ? (chunk.message as any).content : '');
-					if (text) fullOutput += text;
+					if (text) {
+						fullOutput += text;
+						await runManager?.handleLLMNewToken(text);
+					}
 					yield chunk;
 					continue;
 				}
 
-				const text = chunk?.text || (typeof (chunk?.message as any)?.content === 'string' ? (chunk.message as any).content : '');
 				if (text) {
 					buffer += text;
-					const lastBackslash = buffer.lastIndexOf('\\');
-					if (lastBackslash === -1) {
+
+					if (!shouldBufferMath(buffer) || buffer.length > 200) {
 						const cleaned = cleanLatexText(buffer);
 						buffer = '';
 						fullOutput += cleaned;
 						if (chunk.text !== undefined) chunk.text = cleaned;
-						if (chunk?.message && typeof (chunk.message as any).content === 'string') (chunk.message as any).content = cleaned;
-						yield chunk;
-					} else {
-						const afterBackslash = buffer.slice(lastBackslash + 1);
-						if (/[^a-zA-Z]/.test(afterBackslash)) {
-							const cleaned = cleanLatexText(buffer);
-							buffer = '';
-							fullOutput += cleaned;
-							if (chunk.text !== undefined) chunk.text = cleaned;
-							if (chunk?.message && typeof (chunk.message as any).content === 'string') (chunk.message as any).content = cleaned;
-							yield chunk;
+						if (chunk?.message && typeof (chunk.message as any).content === 'string') {
+							(chunk.message as any).content = cleaned;
 						}
+						if (cleaned) {
+							await runManager?.handleLLMNewToken(cleaned);
+						}
+						yield chunk;
 					}
 				} else {
 					yield chunk;
@@ -671,7 +553,11 @@ export function applyJevDualEngine(
 
 			if (buffer) {
 				const cleaned = cleanLatexText(buffer);
+				buffer = '';
 				fullOutput += cleaned;
+				if (cleaned) {
+					await runManager?.handleLLMNewToken(cleaned);
+				}
 				yield new ChatGenerationChunk({
 					text: cleaned,
 					message: new AIMessageChunk({ content: cleaned }),
@@ -690,6 +576,10 @@ export function applyJevDualEngine(
 			const statsBadge = jevConfig.showTokenStats !== false
 				? `\n\n---\n\`⚡ Jev S1: ${tokenReport.jevS1.totalTokens} tokens | 🤖 LLM S2: ${tokenReport.llmS2.totalTokens} tokens | Total: ${tokenReport.totalTokens} tokens\``
 				: '';
+
+			if (statsBadge) {
+				await runManager?.handleLLMNewToken(statsBadge);
+			}
 
 			yield new ChatGenerationChunk({
 				text: statsBadge,

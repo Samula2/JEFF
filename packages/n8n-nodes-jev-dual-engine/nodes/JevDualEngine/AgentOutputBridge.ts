@@ -6,6 +6,7 @@ import {
   mergeStructuredOutput,
   parseStructuredOutput,
 } from './StructuredOutput';
+import { cleanLatexText } from './Sanitizer';
 
 export interface AgentModelCallMetadata {
   thoughts?: unknown[];
@@ -247,6 +248,11 @@ function attachMetadataToAgentResult(
         json,
         calls[calls.length - 1]?.includeIntermediateStepsInOutput === true,
       );
+    }
+
+    // Clean any LaTeX formatting from json.output for pristine display in n8n chat and canvas
+    if (typeof json.output === 'string') {
+      json.output = cleanLatexText(json.output);
     }
 
     // Prefer the final value produced by the Agent/output parser. The captured
