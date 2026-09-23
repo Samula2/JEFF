@@ -1,6 +1,6 @@
 {
   "name": "n8n-nodes-jev-dual-engine",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Universal n8n community Chat Model with Jev Dual-Engine sub-30ms System 1 reasoning, supporting native Google Gemini and OpenAI-compatible APIs (Ollama, LM Studio, DeepSeek, OpenRouter, vLLM).",
   "keywords": [
     "n8n-community-node-package",

@@ -1439,9 +1439,8 @@ export function applySystemMessage(
 // 5. JEV DUAL-ENGINE NODE DEFINITION
 // ─────────────────────────────────────────────────────────────
 
-export class JevDualEngine implements INodeType {
-	description: INodeTypeDescription = {
-		displayName: 'Jev Dual-Engine Model',
+const nodeDescription: INodeTypeDescription = {
+	displayName: 'Jev Dual-Engine Model',
 		name: 'jevDualEngine',
 		icon: 'file:jevDualEngine.svg',
 		group: ['transform'],
@@ -1623,68 +1622,33 @@ export class JevDualEngine implements INodeType {
 				description: 'Adiciona no rodapé da mensagem do chat um badge discreto com os tokens gastos pelo Jev (System 1) e pela LLM (System 2)',
 			},
 
-			// ─── 1. SELEÇÃO DE PROVEDOR ───
-			{
-				displayName: 'Provedor da LLM (System 2)',
-				name: 'provider',
-				type: 'options',
-				options: [
-					{
-						name: 'Automático (Definido na Credencial LLM System 2)',
-						value: 'auto',
-						description: 'Usa o provedor configurado na credencial selecionada (Gemini, Mac mini/Ollama, OpenRouter, etc.)',
-					},
-					{
-						name: 'OpenAI Compatible / Local LLM / Ollama / Mac mini',
-						value: 'openai_compatible',
-						description: 'Força modo OpenAI compatível (Mac mini, Ollama, LM Studio, vLLM, DeepSeek, OpenRouter)',
-					},
-					{
-						name: 'Google Gemini Oficial (SDK Nativo / AI Studio)',
-						value: 'gemini',
-						description: 'Força modo Google Gemini nativo',
-					},
-				],
-				default: 'auto',
-				description: 'Provedor da LLM do System 2 (por padrão detecta da credencial)',
-			},
-
-			// ─── 2. NOME DO MODELO ───
-			{
-				displayName: 'Model Name / ID',
-				name: 'model',
-				type: 'string',
-				default: 'google/gemma-4-26b-a4b',
-				placeholder: 'ex: google/gemma-4-26b-a4b, gemini-2.5-flash, llama3:8b, gpt-4o',
-				description: 'Nome ou ID do modelo na API local ou remota (Mac mini, Ollama, Gemini, OpenRouter, DeepInfra)',
-			},
-
-			// ─── 2. GOOGLE GEMINI (NATIVO) ───
+			// ─── 1. NOME DO MODELO ───
 			{
 				displayName: 'Model Name',
-				name: 'geminiModel',
+				name: 'model',
 				type: 'options',
-				displayOptions: { show: { provider: ['gemini'] } },
-				typeOptions: { loadOptionsMethod: 'getGeminiModels' },
-				default: 'gemini-2.5-flash',
-				description: 'Selecione o modelo Gemini carregado dinamicamente ou defina um Custom Model ID abaixo',
+				typeOptions: {
+					loadOptionsMethod: 'getModels',
+				},
+				default: 'google/gemma-4-26b-a4b',
+				description: 'Selecione o modelo da lista gerada pela sua API key/servidor ou use o campo de texto livre abaixo',
 			},
 			{
 				displayName: 'Custom Model ID (Override)',
-				name: 'geminiModelCustom',
+				name: 'customModel',
 				type: 'string',
-				displayOptions: { show: { provider: ['gemini'] } },
 				default: '',
-				placeholder: 'ex: gemini-2.5-flash, gemini-3.5-flash-lite',
-				description: 'ID de modelo customizado (se preenchido, sobrepõe a seleção do dropdown)',
+				placeholder: 'ex: google/gemma-4-26b-a4b, gemini-2.5-flash',
+				description: 'Se preenchido, sobrepõe a seleção do dropdown acima (permite digitar livremente qualquer nome de modelo)',
 			},
+
+			// ─── 2. OPÇÕES DA LLM ───
 			{
-				displayName: 'Opções do Gemini',
-				name: 'geminiOptions',
+				displayName: 'Opções da LLM',
+				name: 'options',
 				type: 'collection',
 				placeholder: 'Adicionar Opção',
 				default: {},
-				displayOptions: { show: { provider: ['gemini'] } },
 				options: [
 					{
 						displayName: 'Temperatura',
@@ -1695,6 +1659,13 @@ export class JevDualEngine implements INodeType {
 						description: 'Controla a aleatoriedade (0.0 mais determinístico, 2.0 mais criativo)',
 					},
 					{
+						displayName: 'Máximo de Tokens de Saída',
+						name: 'maxOutputTokens',
+						type: 'number',
+						default: 8192,
+						description: 'Limite máximo de tokens gerados pela LLM',
+					},
+					{
 						displayName: 'Top P',
 						name: 'topP',
 						type: 'number',
@@ -1702,35 +1673,10 @@ export class JevDualEngine implements INodeType {
 						default: 0.95,
 					},
 					{
-						displayName: 'Top K',
+						displayName: 'Top K (Gemini)',
 						name: 'topK',
 						type: 'number',
 						default: 40,
-					},
-					{
-						displayName: 'Máximo de Tokens de Saída',
-						name: 'maxOutputTokens',
-						type: 'number',
-						default: 8192,
-					},
-					{
-						displayName: 'Response MIME Type',
-						name: 'responseMimeType',
-						type: 'options',
-						options: [
-							{ name: 'Text (text/plain)', value: 'text/plain' },
-							{ name: 'JSON (application/json)', value: 'application/json' },
-						],
-						default: 'text/plain',
-					},
-					{
-						displayName: 'Structured Output Schema (JSON)',
-						name: 'responseSchema',
-						type: 'string',
-						typeOptions: { rows: 8 },
-						default: '',
-						placeholder: '{\n  "type": "object",\n  "properties": {\n    "message": { "type": "string" }\n  }\n}',
-						description: 'JSON Schema estrito para estruturar a resposta do Gemini',
 					},
 					{
 						displayName: 'Thinking Level (Gemini 3+)',
@@ -1754,53 +1700,7 @@ export class JevDualEngine implements INodeType {
 						description: 'Orçamento de tokens de raciocínio (-1 = dinâmico, 0 = desativado)',
 					},
 					{
-						displayName: 'Include Thoughts',
-						name: 'includeThoughts',
-						type: 'boolean',
-						default: false,
-						description: 'Expõe os pensamentos do Gemini nos metadados do n8n',
-					},
-					{
-						displayName: 'Model Request Timeout (ms)',
-						name: 'requestTimeoutMs',
-						type: 'number',
-						default: 60000,
-						typeOptions: {
-							minValue: 0,
-							maxValue: 900000,
-							numberStepSize: 1000,
-						},
-						description: 'Timeout máximo para cada requisição ao Gemini em milissegundos',
-					},
-					{
-						displayName: 'Recover Empty Final Responses',
-						name: 'recoverEmptyResponses',
-						type: 'boolean',
-						default: true,
-						description: 'Recupera automaticamente requisições que retornam vazias com status STOP',
-					},
-					...sharedModelOptions(),
-				],
-			},
-
-			// ─── 3. OPÇÕES OPENAI / LOCAL LLM / MAC MINI ───
-			{
-				displayName: 'Opções OpenAI / Local LLM',
-				name: 'openaiOptions',
-				type: 'collection',
-				placeholder: 'Adicionar Opção',
-				default: {},
-				displayOptions: { show: { provider: ['openai_compatible', 'auto'] } },
-				options: [
-					{
-						displayName: 'Temperatura',
-						name: 'temperature',
-						type: 'number',
-						typeOptions: { minValue: 0.0, maxValue: 2.0, numberPrecision: 2 },
-						default: 0.2,
-					},
-					{
-						displayName: 'Reasoning Effort',
+						displayName: 'Reasoning Effort (DeepSeek / o1)',
 						name: 'reasoningEffort',
 						type: 'options',
 						options: [
@@ -1813,38 +1713,20 @@ export class JevDualEngine implements INodeType {
 						description: 'Para modelos com raciocínio profundo como DeepSeek-R1 e OpenAI o1/o3-mini',
 					},
 					{
-						displayName: 'Frequency Penalty',
-						name: 'frequencyPenalty',
-						type: 'number',
-						typeOptions: { minValue: -2.0, maxValue: 2.0, numberPrecision: 2 },
-						default: 0,
-					},
-					{
-						displayName: 'Presence Penalty',
-						name: 'presencePenalty',
-						type: 'number',
-						typeOptions: { minValue: -2.0, maxValue: 2.0, numberPrecision: 2 },
-						default: 0,
-					},
-					{
-						displayName: 'Máximo de Tokens de Saída',
-						name: 'maxTokens',
-						type: 'number',
-						default: 4096,
-					},
-					{
-						displayName: 'Seed',
-						name: 'seed',
-						type: 'number',
-						default: 0,
-						description: 'Gera saídas determinísticas se o backend suportar',
-					},
-					{
 						displayName: 'JSON Mode',
 						name: 'jsonMode',
 						type: 'boolean',
 						default: false,
-						description: 'Força o retorno no formato JSON (response_format: { type: "json_object" })',
+						description: 'Força saída em JSON puro',
+					},
+					{
+						displayName: 'Structured Output Schema (JSON)',
+						name: 'responseSchema',
+						type: 'string',
+						typeOptions: { rows: 6 },
+						default: '',
+						placeholder: '{\n  "type": "object",\n  "properties": {\n    "message": { "type": "string" }\n  }\n}',
+						description: 'JSON Schema estrito para estruturar a resposta da LLM',
 					},
 					{
 						displayName: 'Custom Headers (JSON)',
@@ -1852,63 +1734,173 @@ export class JevDualEngine implements INodeType {
 						type: 'string',
 						typeOptions: { rows: 3 },
 						default: '',
-						placeholder: '{"HTTP-Referer": "https://n8n.io", "X-Title": "n8n Jev"}',
-						description: 'Headers HTTP extras em formato JSON (ex: metadados para OpenRouter)',
+						placeholder: '{\n  "HTTP-Referer": "https://meusite.com"\n}',
+					},
+					{
+						displayName: 'Include Thoughts (Gemini)',
+						name: 'includeThoughts',
+						type: 'boolean',
+						default: false,
+						description: 'Expõe os pensamentos do Gemini nos metadados do n8n',
+					},
+					{
+						displayName: 'Timeout (ms)',
+						name: 'requestTimeoutMs',
+						type: 'number',
+						default: 60000,
+						description: 'Timeout máximo para cada requisição à LLM em milissegundos',
+					},
+					{
+						displayName: 'Recover Empty Final Responses',
+						name: 'recoverEmptyResponses',
+						type: 'boolean',
+						default: true,
+						description: 'Recupera automaticamente requisições que retornam vazias com status STOP',
 					},
 					...sharedModelOptions(),
 				],
 			},
 		] as INodeProperties[],
+};
+
+async function fetchModelsForDropdown(context: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+	let creds: any = {};
+	try {
+		creds = await context.getCredentials('jevLlmApi');
+	} catch {}
+
+	const provider = (creds.provider || 'gemini') as string;
+	const apiKey = (creds.apiKey || '').trim();
+
+	// ─── 1. GOOGLE GEMINI (Busca TODOS os modelos da API key) ───
+	if (provider === 'gemini') {
+		const effectiveKey = apiKey || process.env.GEMINI_API_KEY || '';
+		if (effectiveKey) {
+			try {
+				const response = await context.helpers.httpRequest({
+					method: 'GET',
+					url: `https://generativelanguage.googleapis.com/v1beta/models?key=${effectiveKey}`,
+					json: true,
+				});
+				if (response && Array.isArray(response.models)) {
+					const options: INodePropertyOptions[] = [];
+					for (const m of response.models) {
+						if (m.name && typeof m.name === 'string') {
+							const modelId = m.name.replace(/^models\//, '');
+							const methods = m.supportedGenerationMethods;
+							if (!methods || (Array.isArray(methods) && methods.includes('generateContent'))) {
+								const label = m.displayName ? `${m.displayName} (${modelId})` : modelId;
+								options.push({
+									name: label,
+									value: modelId,
+									description: m.description ? m.description.slice(0, 100) : `Modelo ${modelId}`,
+								});
+							}
+						}
+					}
+					if (options.length > 0) return options;
+				}
+			} catch {}
+		}
+		return [
+			{ name: 'Gemini 2.5 Flash (Recomendado)', value: 'gemini-2.5-flash' },
+			{ name: 'Gemini 2.5 Pro', value: 'gemini-2.5-pro' },
+			{ name: 'Gemini 3.5 Flash', value: 'gemini-3.5-flash' },
+			{ name: 'Gemini 3.5 Flash Lite', value: 'gemini-3.5-flash-lite' },
+			{ name: 'Gemini 3.1 Pro', value: 'gemini-3.1-pro' },
+			{ name: 'Gemini 2.0 Flash', value: 'gemini-2.0-flash' },
+			{ name: 'Gemini 1.5 Flash', value: 'gemini-1.5-flash' },
+			{ name: 'Gemini 1.5 Pro', value: 'gemini-1.5-pro' },
+		];
+	}
+
+	// ─── 2. OPENROUTER ───
+	if (provider === 'openrouter') {
+		if (apiKey) {
+			try {
+				const response = await context.helpers.httpRequest({
+					method: 'GET',
+					url: 'https://openrouter.ai/api/v1/models',
+					headers: { Authorization: `Bearer ${apiKey}` },
+					json: true,
+				});
+				if (response?.data && Array.isArray(response.data)) {
+					return response.data.map((m: any) => ({
+						name: `${m.name || m.id} (${m.id})`,
+						value: m.id,
+						description: m.description ? m.description.slice(0, 100) : undefined,
+					}));
+				}
+			} catch {}
+		}
+		return [
+			{ name: 'Google: Gemma 4 26B A4B Instruct', value: 'google/gemma-4-26b-a4b-it' },
+			{ name: 'Anthropic: Claude 3.5 Sonnet', value: 'anthropic/claude-3.5-sonnet' },
+			{ name: 'Meta: Llama 3.3 70B Instruct', value: 'meta-llama/llama-3.3-70b-instruct' },
+			{ name: 'DeepSeek: DeepSeek V3', value: 'deepseek/deepseek-chat' },
+		];
+	}
+
+	// ─── 3. CUSTOM / MAC MINI / OLLAMA ───
+	let baseUrl = (creds.customBaseUrl || 'http://localhost:11434/v1').replace(/\/+$/, '');
+	const customKey = creds.customApiKey || creds.apiKey || '';
+	const headers: Record<string, string> = {};
+	if (customKey && customKey !== 'not-needed') {
+		headers['Authorization'] = `Bearer ${customKey}`;
+	}
+
+	const localOptions: INodePropertyOptions[] = [];
+	const seen = new Set<string>();
+	const addOption = (id: string, label?: string) => {
+		if (!seen.has(id)) {
+			seen.add(id);
+			localOptions.push({ name: label || id, value: id });
+		}
 	};
+
+	addOption('google/gemma-4-26b-a4b', 'Google: Gemma 4 26B A4B (google/gemma-4-26b-a4b)');
+
+	try {
+		const modelsUrl = baseUrl.endsWith('/v1') ? `${baseUrl}/models` : `${baseUrl}/v1/models`;
+		const resp = await context.helpers.httpRequest({ method: 'GET', url: modelsUrl, headers, json: true });
+		const list = resp?.data || resp?.models || (Array.isArray(resp) ? resp : null);
+		if (Array.isArray(list)) {
+			for (const item of list) {
+				const id = typeof item === 'string' ? item : (item.id || item.name);
+				if (id) addOption(String(id));
+			}
+		}
+	} catch {
+		try {
+			const rootUrl = baseUrl.replace(/\/v1$/, '');
+			const ollamaResp = await context.helpers.httpRequest({ method: 'GET', url: `${rootUrl}/api/tags`, headers, json: true });
+			if (ollamaResp && Array.isArray(ollamaResp.models)) {
+				for (const item of ollamaResp.models) {
+					const name = item.name || item.model;
+					if (name) addOption(String(name));
+				}
+			}
+		} catch {}
+	}
+
+	addOption('llama3:8b', 'Meta: Llama 3 8B (llama3:8b)');
+	addOption('deepseek-r1:70b', 'DeepSeek: R1 70B (deepseek-r1:70b)');
+	addOption('qwen2.5:32b', 'Qwen: 2.5 32B (qwen2.5:32b)');
+	addOption('gpt-4o', 'OpenAI: GPT-4o (gpt-4o)');
+
+	return localOptions;
+}
+
+export class JevDualEngine implements INodeType {
+	description: INodeTypeDescription = nodeDescription;
 
 	methods = {
 		loadOptions: {
+			async getModels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
+				return fetchModelsForDropdown(this);
+			},
 			async getGeminiModels(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
-				let apiKey = '';
-				try {
-					const creds = await this.getCredentials('googleGeminiApi');
-					if (creds && typeof creds.apiKey === 'string') apiKey = creds.apiKey.trim();
-				} catch {}
-				if (!apiKey) {
-					try {
-						const creds = await this.getCredentials('jevLlmApi');
-						if (creds && typeof creds.apiKey === 'string') apiKey = creds.apiKey.trim();
-					} catch {}
-				}
-
-				const defaultModels: INodePropertyOptions[] = [
-					{ name: 'Gemini 2.5 Flash', value: 'gemini-2.5-flash' },
-					{ name: 'Gemini 3.5 Flash', value: 'gemini-3.5-flash' },
-					{ name: 'Gemini 3.5 Flash Lite', value: 'gemini-3.5-flash-lite' },
-					{ name: 'Gemini 3.1 Pro', value: 'gemini-3.1-pro' },
-					{ name: 'Gemini 2.0 Flash', value: 'gemini-2.0-flash' },
-				];
-
-				if (!apiKey) return defaultModels;
-
-				try {
-					const response = await this.helpers.httpRequest({
-						method: 'GET',
-						url: 'https://generativelanguage.googleapis.com/v1beta/models',
-						headers: { 'x-goog-api-key': apiKey },
-						json: true,
-					});
-					if (response && Array.isArray(response.models)) {
-						const options: INodePropertyOptions[] = [];
-						for (const m of response.models) {
-							if (m.name && typeof m.name === 'string') {
-								const modelId = m.name.replace(/^models\//, '');
-								const methods = m.supportedGenerationMethods;
-								if (!methods || (Array.isArray(methods) && methods.includes('generateContent'))) {
-									const label = m.displayName ? `${m.displayName} (${modelId})` : modelId;
-									options.push({ name: label, value: modelId });
-								}
-							}
-						}
-						if (options.length > 0) return options;
-					}
-				} catch {}
-				return defaultModels;
+				return fetchModelsForDropdown(this);
 			},
 		},
 	};
@@ -1932,19 +1924,46 @@ export class JevDualEngine implements INodeType {
 			}
 		} catch {}
 
-		let modelName = 'google/gemma-4-26b-a4b';
+		let customModel = '';
 		try {
-			const m = this.getNodeParameter('model', executionItemIndex, '') as string;
-			if (m && m.trim()) modelName = m.trim();
-			else {
-				const o = this.getNodeParameter('openaiModel', executionItemIndex, '') as string;
-				if (o && o.trim()) modelName = o.trim();
-				else {
-					const g = this.getNodeParameter('geminiModel', executionItemIndex, '') as string;
-					if (g && g.trim()) modelName = g.trim();
-				}
-			}
+			customModel = (this.getNodeParameter('customModel', executionItemIndex, '') as string).trim();
 		} catch {}
+		if (!customModel) {
+			try {
+				customModel = (this.getNodeParameter('geminiModelCustom', executionItemIndex, '') as string).trim();
+			} catch {}
+		}
+		if (!customModel) {
+			try {
+				customModel = (this.getNodeParameter('openaiModelCustom', executionItemIndex, '') as string).trim();
+			} catch {}
+		}
+
+		let modelName = '';
+		if (customModel) {
+			modelName = customModel;
+		} else {
+			try {
+				const m = this.getNodeParameter('model', executionItemIndex, '') as string;
+				if (m && m.trim()) modelName = m.trim();
+				else {
+					const o = this.getNodeParameter('openaiModel', executionItemIndex, '') as string;
+					if (o && o.trim()) modelName = o.trim();
+					else {
+						const g = this.getNodeParameter('geminiModel', executionItemIndex, '') as string;
+						if (g && g.trim()) modelName = g.trim();
+					}
+				}
+			} catch {}
+		}
+
+		if (!modelName) {
+			modelName = provider === 'gemini' ? 'gemini-2.5-flash' : 'google/gemma-4-26b-a4b';
+		} else if (provider === 'gemini' && modelName === 'google/gemma-4-26b-a4b') {
+			modelName = 'gemini-2.5-flash';
+		} else if (provider !== 'gemini' && modelName === 'gemini-2.5-flash') {
+			modelName = 'google/gemma-4-26b-a4b';
+		}
 
 		// Jev Dual-Engine specific settings
 		const enableSandwich = this.getNodeParameter('enableSandwich', executionItemIndex, true) as boolean;
@@ -1971,16 +1990,16 @@ export class JevDualEngine implements INodeType {
 				);
 			}
 
-			let geminiModel = modelName;
-			try {
-				const customModel = this.getNodeParameter('geminiModelCustom', executionItemIndex, '') as string;
-				if (customModel && customModel.trim()) geminiModel = customModel.trim();
-			} catch {}
+			const geminiModel = modelName;
 
 			let opts: Record<string, any> = {};
 			try {
-				opts = this.getNodeParameter('geminiOptions', executionItemIndex, {}) as Record<string, any>;
-			} catch {}
+				opts = this.getNodeParameter('options', executionItemIndex, {}) as Record<string, any>;
+			} catch {
+				try {
+					opts = this.getNodeParameter('geminiOptions', executionItemIndex, {}) as Record<string, any>;
+				} catch {}
+			}
 			const sharedOptions = resolveSharedModelOptions(this, opts);
 
 			const thinkingConfig: Record<string, unknown> = {};
@@ -2080,13 +2099,16 @@ export class JevDualEngine implements INodeType {
 			}
 			baseUrl = baseUrl.replace(/\/+$/, '');
 
-			let openaiModel = modelName;
-			try {
-				const customModel = this.getNodeParameter('openaiModelCustom', executionItemIndex, '') as string;
-				if (customModel && customModel.trim()) openaiModel = customModel.trim();
-			} catch {}
+			const openaiModel = modelName;
 
-			const opts = this.getNodeParameter('openaiOptions', executionItemIndex, {}) as Record<string, any>;
+			let opts: Record<string, any> = {};
+			try {
+				opts = this.getNodeParameter('options', executionItemIndex, {}) as Record<string, any>;
+			} catch {
+				try {
+					opts = this.getNodeParameter('openaiOptions', executionItemIndex, {}) as Record<string, any>;
+				} catch {}
+			}
 			const sharedOptions = resolveSharedModelOptions(this, opts);
 
 			let parsedHeaders: Record<string, string> = {};
@@ -2137,11 +2159,13 @@ export class JevDualEngine implements INodeType {
 			];
 
 			if (opts.temperature !== undefined) modelOptions.temperature = opts.temperature;
-			if (opts.maxTokens !== undefined) modelOptions.maxTokens = opts.maxTokens;
+			const maxTokens = opts.maxTokens ?? opts.maxOutputTokens;
+			if (maxTokens !== undefined) modelOptions.maxTokens = maxTokens;
 			if (opts.frequencyPenalty !== undefined) modelOptions.frequencyPenalty = opts.frequencyPenalty;
 			if (opts.presencePenalty !== undefined) modelOptions.presencePenalty = opts.presencePenalty;
 			if (opts.seed !== undefined && !isNaN(Number(opts.seed))) modelOptions.seed = Number(opts.seed);
 			if (reasoningEffort !== 'none') modelOptions.reasoningEffort = reasoningEffort;
+			if (opts.requestTimeoutMs !== undefined) modelOptions.timeout = opts.requestTimeoutMs;
 
 			let model: BaseChatModel = new ChatOpenAI(modelOptions);
 			model = applySystemMessage(model, sharedOptions.systemMessage ?? '');
