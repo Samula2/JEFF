@@ -34,9 +34,9 @@ export class JevLlmApi implements ICredentialType {
 					description: 'Endpoint oficial da OpenAI',
 				},
 				{
-					name: 'Custom Endpoint / Mac mini / Ollama Local (Padrão OpenAI)',
+					name: 'Custom Endpoint / Ollama Local',
 					value: 'custom',
-					description: 'Qualquer API compatível com o padrão OpenAI (Mac mini, Ollama, LM Studio, vLLM)',
+					description: 'Qualquer API compatível com o padrão OpenAI',
 				},
 			],
 			default: 'gemini',

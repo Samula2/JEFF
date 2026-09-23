@@ -1446,7 +1446,7 @@ export class JevDualEngine implements INodeType {
 		icon: 'file:jevDualEngine.svg',
 		group: ['transform'],
 		version: 1,
-		subtitle: '={{$parameter["model"] || $parameter["openaiModel"] || $parameter["geminiModel"] || "google/gemma-4-26b-a4b"}}',
+		subtitle: '={{$parameter["provider"] === "gemini" ? ($parameter["geminiModelCustom"] || $parameter["geminiModel"] || "gemini-2.5-flash") : ($parameter["openaiModel"] || $parameter["openaiModelCustom"] || $parameter["model"] || "google/gemma-4-26b-a4b")}}',
 		description: 'Universal Chat Model com Raciocínio Deliberado Jev (System 1 sub-30ms), suporte nativo a Google Gemini e APIs Compatíveis com OpenAI / LLMs Locais (Ollama, LM Studio, DeepSeek, OpenRouter)',
 		defaults: {
 			name: 'Jev Dual-Engine Model',
@@ -1465,13 +1465,31 @@ export class JevDualEngine implements INodeType {
 			},
 		},
 		inputs:
-			'={{ (($parameter.geminiOptions && (($parameter.geminiOptions.usageReporter && $parameter.geminiOptions.usageReporter.settings && $parameter.geminiOptions.usageReporter.settings.enabled) || $parameter.geminiOptions.enableUsageReporter)) || ($parameter.openaiOptions && (($parameter.openaiOptions.usageReporter && $parameter.openaiOptions.usageReporter.settings && $parameter.openaiOptions.usageReporter.settings.enabled) || $parameter.openaiOptions.enableUsageReporter)) || $parameter.enableUsageReporter) ? [{ type: "ai_tool", displayName: "Usage Reporter", required: false, maxConnections: 1 }] : [] }}',
+			'={{ (($parameter.provider === "gemini" && $parameter.geminiOptions && (($parameter.geminiOptions.usageReporter && $parameter.geminiOptions.usageReporter.settings && $parameter.geminiOptions.usageReporter.settings.enabled) || $parameter.geminiOptions.enableUsageReporter)) || ($parameter.provider === "openai_compatible" && $parameter.openaiOptions && (($parameter.openaiOptions.usageReporter && $parameter.openaiOptions.usageReporter.settings && $parameter.openaiOptions.usageReporter.settings.enabled) || $parameter.openaiOptions.enableUsageReporter)) || $parameter.enableUsageReporter) ? [{ type: "ai_tool", displayName: "Usage Reporter", required: false, maxConnections: 1 }] : [] }}',
 		outputs: [NodeConnectionTypes.AiLanguageModel],
 		outputNames: ['Model'],
 		credentials: [
 			{
+				name: 'openAiCompatibleApi',
+				required: false,
+				displayOptions: {
+					show: {
+						provider: ['openai_compatible'],
+					},
+				},
+			},
+			{
+				name: 'googleGeminiApi',
+				required: false,
+				displayOptions: {
+					show: {
+						provider: ['gemini'],
+					},
+				},
+			},
+			{
 				name: 'jevLlmApi',
-				required: true,
+				required: false,
 			},
 			{
 				name: 'jevApi',
@@ -1630,33 +1648,18 @@ export class JevDualEngine implements INodeType {
 				type: 'options',
 				options: [
 					{
-						name: 'Automático (Definido na Credencial LLM System 2)',
-						value: 'auto',
-						description: 'Usa o provedor configurado na credencial selecionada (Gemini, Mac mini/Ollama, OpenRouter, etc.)',
-					},
-					{
-						name: 'OpenAI Compatible / Local LLM / Ollama / Mac mini',
+						name: 'OpenAI Compatible / Local LLM / Ollama / Mac mini / DeepSeek',
 						value: 'openai_compatible',
-						description: 'Força modo OpenAI compatível (Mac mini, Ollama, LM Studio, vLLM, DeepSeek, OpenRouter)',
+						description: 'Qualquer endpoint HTTP compatível (Mac mini, Ollama, LM Studio, vLLM, DeepSeek, OpenRouter)',
 					},
 					{
 						name: 'Google Gemini Oficial (SDK Nativo / AI Studio)',
 						value: 'gemini',
-						description: 'Força modo Google Gemini nativo',
+						description: 'Google Gemini 2.5 Flash, 3.5 Flash, 3.1 Pro com controle de Thinking e Schemas',
 					},
 				],
-				default: 'auto',
-				description: 'Provedor da LLM do System 2 (por padrão detecta da credencial)',
-			},
-
-			// ─── 2. NOME DO MODELO ───
-			{
-				displayName: 'Model Name / ID',
-				name: 'model',
-				type: 'string',
-				default: 'google/gemma-4-26b-a4b',
-				placeholder: 'ex: google/gemma-4-26b-a4b, gemini-2.5-flash, llama3:8b, gpt-4o',
-				description: 'Nome ou ID do modelo na API local ou remota (Mac mini, Ollama, Gemini, OpenRouter, DeepInfra)',
+				default: 'openai_compatible',
+				description: 'Selecione o provedor de inteligência artificial',
 			},
 
 			// ─── 2. GOOGLE GEMINI (NATIVO) ───
@@ -1783,14 +1786,23 @@ export class JevDualEngine implements INodeType {
 				],
 			},
 
-			// ─── 3. OPÇÕES OPENAI / LOCAL LLM / MAC MINI ───
+			// ─── 3. OPENAI / LOCAL LLM / OLLAMA / MAC MINI ───
+			{
+				displayName: 'Model Name / ID',
+				name: 'openaiModel',
+				type: 'string',
+				displayOptions: { show: { provider: ['openai_compatible'] } },
+				default: 'google/gemma-4-26b-a4b',
+				placeholder: 'ex: google/gemma-4-26b-a4b, llama3:8b, deepseek-r1:70b, gpt-4o',
+				description: 'Nome ou ID do modelo na API local ou remota (Mac mini, Ollama, LM Studio, DeepSeek, OpenRouter)',
+			},
 			{
 				displayName: 'Opções OpenAI / Local LLM',
 				name: 'openaiOptions',
 				type: 'collection',
 				placeholder: 'Adicionar Opção',
 				default: {},
-				displayOptions: { show: { provider: ['openai_compatible', 'auto'] } },
+				displayOptions: { show: { provider: ['openai_compatible'] } },
 				options: [
 					{
 						displayName: 'Temperatura',
@@ -1916,35 +1928,7 @@ export class JevDualEngine implements INodeType {
 	async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
 		const executionSettings = getModelExecutionSettings(this, itemIndex);
 		const executionItemIndex = executionSettings.executeOnce ? 0 : itemIndex;
-
-		let llmCreds: any = {};
-		try {
-			llmCreds = await this.getCredentials('jevLlmApi');
-		} catch (err: any) {
-			throw new NodeOperationError(this.getNode(), 'Credencial "LLM System 2 API" é necessária para o nó de modelo Jev.');
-		}
-
-		let provider = (llmCreds.provider || 'custom') as string;
-		try {
-			const nodeProvider = this.getNodeParameter('provider', executionItemIndex, 'auto') as string;
-			if (nodeProvider && nodeProvider !== 'auto') {
-				provider = nodeProvider === 'openai_compatible' ? 'custom' : nodeProvider;
-			}
-		} catch {}
-
-		let modelName = 'google/gemma-4-26b-a4b';
-		try {
-			const m = this.getNodeParameter('model', executionItemIndex, '') as string;
-			if (m && m.trim()) modelName = m.trim();
-			else {
-				const o = this.getNodeParameter('openaiModel', executionItemIndex, '') as string;
-				if (o && o.trim()) modelName = o.trim();
-				else {
-					const g = this.getNodeParameter('geminiModel', executionItemIndex, '') as string;
-					if (g && g.trim()) modelName = g.trim();
-				}
-			}
-		} catch {}
+		const provider = this.getNodeParameter('provider', executionItemIndex, 'openai_compatible') as 'gemini' | 'openai_compatible';
 
 		// Jev Dual-Engine specific settings
 		const enableSandwich = this.getNodeParameter('enableSandwich', executionItemIndex, true) as boolean;
@@ -1960,27 +1944,32 @@ export class JevDualEngine implements INodeType {
 		};
 
 		if (provider === 'gemini') {
-			let geminiApiKey = (llmCreds.apiKey || '').trim();
+			let geminiApiKey = '';
+			try {
+				const creds = await this.getCredentials('googleGeminiApi');
+				if (creds && typeof creds.apiKey === 'string') geminiApiKey = creds.apiKey.trim();
+			} catch {}
+			if (!geminiApiKey) {
+				try {
+					const creds = await this.getCredentials('jevLlmApi');
+					if (creds && typeof creds.apiKey === 'string') geminiApiKey = creds.apiKey.trim();
+				} catch {}
+			}
 			if (!geminiApiKey && process.env.GEMINI_API_KEY) {
 				geminiApiKey = process.env.GEMINI_API_KEY.trim();
 			}
 			if (!geminiApiKey) {
 				throw new NodeOperationError(
 					this.getNode(),
-					'Chave de API do Google Gemini não encontrada na credencial "LLM System 2 API". Configure-a na credencial.',
+					'Chave de API do Google Gemini não encontrada. Configure a credencial "Google Gemini API" ou "LLM System 2 API".',
 				);
 			}
 
-			let geminiModel = modelName;
-			try {
-				const customModel = this.getNodeParameter('geminiModelCustom', executionItemIndex, '') as string;
-				if (customModel && customModel.trim()) geminiModel = customModel.trim();
-			} catch {}
+			let geminiModel = this.getNodeParameter('geminiModel', executionItemIndex, 'gemini-2.5-flash') as string;
+			const customModel = this.getNodeParameter('geminiModelCustom', executionItemIndex, '') as string;
+			if (customModel.trim()) geminiModel = customModel.trim();
 
-			let opts: Record<string, any> = {};
-			try {
-				opts = this.getNodeParameter('geminiOptions', executionItemIndex, {}) as Record<string, any>;
-			} catch {}
+			const opts = this.getNodeParameter('geminiOptions', executionItemIndex, {}) as Record<string, any>;
 			const sharedOptions = resolveSharedModelOptions(this, opts);
 
 			const thinkingConfig: Record<string, unknown> = {};
@@ -2054,33 +2043,54 @@ export class JevDualEngine implements INodeType {
 				response: applyModelRetry(model, executionSettings, 'gemini'),
 			};
 		} else {
-			// ─── OPENAI COMPATIBLE / LOCAL LLM / DEEPSEEK / OLLAMA / MAC MINI ───
+			// ─── OPENAI COMPATIBLE / LOCAL LLM / DEEPSEEK / OLLAMA ───
 			let baseUrl = 'http://localhost:11434/v1';
 			let openaiApiKey = 'not-needed';
+			try {
+				const creds = await this.getCredentials('openAiCompatibleApi');
+				if (creds && typeof creds.baseUrl === 'string' && creds.baseUrl.trim()) {
+					baseUrl = creds.baseUrl.trim();
+				}
+				if (creds && typeof creds.apiKey === 'string' && creds.apiKey.trim()) {
+					openaiApiKey = creds.apiKey.trim();
+				}
+			} catch {}
 
-			if (provider === 'openrouter') {
-				baseUrl = 'https://openrouter.ai/api/v1';
-				openaiApiKey = (llmCreds.apiKey || '').trim();
-			} else if (provider === 'deepinfra') {
-				baseUrl = 'https://api.deepinfra.com/v1/openai';
-				openaiApiKey = (llmCreds.apiKey || '').trim();
-			} else if (provider === 'openai') {
-				baseUrl = 'https://api.openai.com/v1';
-				openaiApiKey = (llmCreds.apiKey || process.env.OPENAI_API_KEY || '').trim();
-			} else {
-				// 'custom' / Ollama / Mac mini
-				if (llmCreds.customBaseUrl && typeof llmCreds.customBaseUrl === 'string' && llmCreds.customBaseUrl.trim()) {
-					baseUrl = llmCreds.customBaseUrl.trim();
-				}
-				if (llmCreds.customApiKey && typeof llmCreds.customApiKey === 'string' && llmCreds.customApiKey.trim()) {
-					openaiApiKey = llmCreds.customApiKey.trim();
-				} else if (llmCreds.apiKey && typeof llmCreds.apiKey === 'string' && llmCreds.apiKey.trim()) {
-					openaiApiKey = llmCreds.apiKey.trim();
-				}
+			if (baseUrl === 'http://localhost:11434/v1' && openaiApiKey === 'not-needed') {
+				try {
+					const creds = await this.getCredentials('jevLlmApi');
+					if (creds) {
+						if (creds.provider === 'openrouter') {
+							baseUrl = 'https://openrouter.ai/api/v1';
+						} else if (creds.provider === 'deepinfra') {
+							baseUrl = 'https://api.deepinfra.com/v1/openai';
+						} else if (creds.provider === 'openai') {
+							baseUrl = 'https://api.openai.com/v1';
+						}
+						if (typeof creds.customBaseUrl === 'string' && creds.customBaseUrl.trim()) {
+							baseUrl = creds.customBaseUrl.trim();
+						}
+						if (typeof creds.customApiKey === 'string' && creds.customApiKey.trim()) {
+							openaiApiKey = creds.customApiKey.trim();
+						} else if (typeof creds.apiKey === 'string' && creds.apiKey.trim()) {
+							openaiApiKey = creds.apiKey.trim();
+						}
+					}
+				} catch {}
 			}
 			baseUrl = baseUrl.replace(/\/+$/, '');
 
-			let openaiModel = modelName;
+			let openaiModel = 'google/gemma-4-26b-a4b';
+			try {
+				const pModel = this.getNodeParameter('openaiModel', executionItemIndex, '') as string;
+				if (pModel && pModel.trim()) openaiModel = pModel.trim();
+			} catch {}
+			if (openaiModel === 'google/gemma-4-26b-a4b') {
+				try {
+					const legModel = this.getNodeParameter('model', executionItemIndex, '') as string;
+					if (legModel && legModel.trim()) openaiModel = legModel.trim();
+				} catch {}
+			}
 			try {
 				const customModel = this.getNodeParameter('openaiModelCustom', executionItemIndex, '') as string;
 				if (customModel && customModel.trim()) openaiModel = customModel.trim();
